@@ -1,0 +1,4 @@
+~/projects/klee/build/bin/klee --optimize --cex-cache-try-all --jk-input-name="cat" --smtlib-human-readable=false --libc=uclibc --posix-runtime ./bitcode/cat.bc --sym-args 1 5 7
+
+~/projects/klee/build/bin/klee --optimize --cex-cache-try-all --jk-input-name="echo" --smtlib-human-readable=false --libc=uclibc --posix-runtime ./bitcode/echo.bc --sym-args 1 5 10
+
