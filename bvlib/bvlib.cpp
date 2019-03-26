@@ -59,6 +59,9 @@ bitvector bv_mk(bv_width width, bv_word n) {
 
 bitvector bv_add(bitvector a, bitvector b) {
   BVLIB_ASSERT(a.width == b.width);
+  BVLIB_ASSERT(a.occupied_width <= a.width);
+  BVLIB_ASSERT(b.occupied_width <= b.width);
+
   const bv_width bitsNeeded =
       min(max(a.occupied_width, b.occupied_width) + 1, a.width);
   const bv_width wordsNeeded = numWordsNeeded(bitsNeeded);
@@ -72,6 +75,9 @@ bitvector bv_add(bitvector a, bitvector b) {
 
 bitvector bv_mul(bitvector a, bitvector b) {
   BVLIB_ASSERT(a.width == b.width);
+  BVLIB_ASSERT(a.occupied_width <= a.width);
+  BVLIB_ASSERT(b.occupied_width <= b.width);
+
   const bv_width bitsNeeded = min(a.occupied_width + b.occupied_width, a.width);
   const bv_width wordsNeeded = numWordsNeeded(bitsNeeded);
   if (wordsNeeded > 1)
@@ -82,9 +88,49 @@ bitvector bv_mul(bitvector a, bitvector b) {
   return res;
 }
 
-bitvector bv_and(bitvector a, bitvector b);
-bitvector bv_or(bitvector a, bitvector b);
-bitvector bv_eq(bitvector a, bitvector b);
+bitvector bv_and(bitvector a, bitvector b) {
+  BVLIB_ASSERT(a.width == b.width);
+  BVLIB_ASSERT(a.occupied_width <= a.width);
+  BVLIB_ASSERT(b.occupied_width <= b.width);
+
+  const bv_width bitsNeeded = min(a.occupied_width, b.occupied_width);
+  const bv_width wordsNeeded = numWordsNeeded(bitsNeeded);
+  if (wordsNeeded > 1)
+    BVLIB_ASSERT(false);
+
+  bv_word bits = a.bits.data & b.bits.data;
+  bitvector res = {a.width, bitsNeeded, {bits}};
+  return res;
+}
+
+bitvector bv_or(bitvector a, bitvector b) {
+  BVLIB_ASSERT(a.width == b.width);
+  BVLIB_ASSERT(a.occupied_width <= a.width);
+  BVLIB_ASSERT(b.occupied_width <= b.width);
+
+  const bv_width bitsNeeded = max(a.occupied_width, b.occupied_width);
+  const bv_width wordsNeeded = numWordsNeeded(bitsNeeded);
+  if (wordsNeeded > 1)
+    BVLIB_ASSERT(false);
+
+  bv_word bits = a.bits.data | b.bits.data;
+  bitvector res = {a.width, bitsNeeded, {bits}};
+  return res;
+}
+
+bitvector bv_eq(bitvector a, bitvector b) {
+  BVLIB_ASSERT(a.width == b.width);
+  BVLIB_ASSERT(a.occupied_width <= a.width);
+  BVLIB_ASSERT(b.occupied_width <= b.width);
+
+  const bv_width wordsNeeded =
+      numWordsNeeded(max(a.occupied_width, b.occupied_width));
+  if (wordsNeeded)
+    BVLIB_ASSERT(false);
+
+  int res = a.bits.data == b.bits.data;
+  return bv_bool(res);
+}
 
 bitvector bv_concat(bitvector a, bitvector b);
 bitvector bv_extract(bitvector a, bv_width n);
