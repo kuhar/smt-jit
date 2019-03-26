@@ -23,7 +23,7 @@ add_custom_command(OUTPUT bvlib_bitcode
                    COMMAND ${CMAKE_CXX_COMPILER}
                            ${INCLUDE_DIRECTORIES}
                            -emit-llvm -c ${CXX_COMPILER_FLAGS}
-                           -std=gnu++14 -march=native
+                           -std=gnu++14 -march=native -O3
                            -o bvlib.bc
                            ${CMAKE_CURRENT_SOURCE_DIR}/bvlib.cpp)
 
@@ -31,7 +31,7 @@ add_custom_command(OUTPUT bvlib_ir
                    COMMAND ${CMAKE_CXX_COMPILER}
                            ${INCLUDE_DIRECTORIES}
                            -S -emit-llvm -c ${CXX_COMPILER_FLAGS}
-                           -std=gnu++14 -march=native
+                           -std=gnu++14 -march=native -O3
                            -o bvlib.ll
                            ${CMAKE_CURRENT_SOURCE_DIR}/bvlib.cpp)
 
