@@ -44,7 +44,7 @@ bitvector bv_eq(bitvector a, bitvector b);
 
 bitvector bv_concat(bitvector a, bitvector b);
 
-bitvector bv_extract(bitvector a, bv_width n);
+bitvector bv_extract(bitvector a, bv_width from, bv_width to);
 bitvector bv_zext(bitvector n, bv_width width);
 bitvector bv_sext(bitvector n, bv_width width);
 
