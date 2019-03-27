@@ -25,10 +25,7 @@ constexpr bv_width numWordsNeeded(bv_width width) {
 }
 
 constexpr bv_width numBitsNeeded(bv_word n) {
-  if (n == 0)
-    return 0;
-
-  bv_width res = 1;
+  bv_width res = n == 0 ? 0 : 1;
   while (n >>= 1)
     ++res;
   return res;
@@ -40,6 +37,10 @@ constexpr bv_width max(bv_width a, bv_width b) { return a < b ? b : a; }
 constexpr bv_word maskOverflow(bv_word n, bv_width width) {
   const bv_width shiftAmount = BVWordBits - width;
   return (n << shiftAmount) >> shiftAmount;
+}
+
+constexpr bv_word maskLowerBits(bv_word n, bv_width width) {
+  return (n >> width) << width;
 }
 
 } // namespace
@@ -54,6 +55,7 @@ bitvector bv_mk(bv_width width, bv_word n) {
   if (width < BVWordBits)
     BVLIB_ASSERT(n <= (1ull << width) && "BV literal does not fit the width");
   BVLIB_ASSERT(n <= BVWordMax);
+  BVLIB_ASSERT(n >= 0);
   (void)BVWordMax;
 
   const bv_width bitsNeeded = numBitsNeeded(n);
@@ -178,7 +180,20 @@ bitvector bv_zext(bitvector n, bv_width width) {
   return {width, n.occupied_width, n.bits};
 }
 
-bitvector bv_sext(bitvector n, bv_width width);
+bitvector bv_sext(bitvector n, bv_width width) {
+  BVLIB_ASSERT(n.occupied_width <= n.width);
+
+  const bv_word pad_bit = n.bits.data >> (n.width - 1);
+  if (pad_bit == 1 && BVWordBits < width)
+    BVLIB_ASSERT(false);
+
+  const bv_word mask = (pad_bit == 0) ? 0 : maskLowerBits(~0, n.width);
+  const bv_word bits = maskOverflow(n.bits.data | mask, width);
+
+  const bv_width bitsNeeded = (pad_bit == 0) ? n.occupied_width : width;
+  bitvector res = {width, bitsNeeded, {bits}};
+  return res;
+}
 
 bitvector bva_select(bv_array *arr, bv_word n) {
   BVLIB_ASSERT(arr);
@@ -186,6 +201,37 @@ bitvector bva_select(bv_array *arr, bv_word n) {
   return arr->values[n];
 }
 
-void bv_print(bitvector v);
-void bva_print(bv_array *arr);
+void bv_fprint(void *file, bitvector v) {
+  BVLIB_ASSERT(v.occupied_width <= BVWordBits);
+
+  fprintf((FILE *)file, "{w: %u, ow: %u, [", v.width, v.occupied_width);
+
+  const bv_word n = v.bits.data;
+  for (bv_width i = 0, e = v.occupied_width; i != e; ++i) {
+    char c = ((n & (1 << i)) == 0) ? '0' : '1';
+    fprintf((FILE *)file, (i + 1 == e) ? "%c" : "%c, ", c);
+  }
+
+  const bv_width numTrailingZeros = v.width - v.occupied_width;
+  for (bv_width i = 0; i != numTrailingZeros; ++i)
+    fprintf((FILE *)file, ", 0");
+
+  fprintf((FILE *)file, "]}");
+}
+
+void bv_print(bitvector v) { bv_fprint(stdout, v); }
+
+void bva_fprint(void *file, bv_array *arr) {
+  fprintf((FILE *)file, "[");
+
+  for (bv_width i = 0, e = arr->len; i != e; ++i) {
+    bv_fprint(file, arr->values[i]);
+    if (i + i != e)
+      fprintf((FILE *)file, ", ");
+  }
+
+  fprintf((FILE *)file, "]");
+}
+
+void bva_print(bv_array *arr) { bva_fprint(stdout, arr); }
 }

@@ -2,6 +2,8 @@
 
 #include "bvlib.h"
 
+#include <cstdio>
+
 TEST_CASE("Test bv_mk") {
   bitvector v = bv_mk(8, 12);
   CHECK(v.width == 8);
@@ -273,4 +275,44 @@ TEST_CASE("Test bv_extract_whole") {
   CHECK(s.width == 8);
   CHECK(s.occupied_width == 8);
   CHECK(s.bits.data == 181);
+}
+
+TEST_CASE("Test bv_sext_small1") {
+  bitvector a = bv_mk(8, 5);
+  bitvector s = bv_sext(a, 16);
+  CHECK(s.width == 16);
+  CHECK(s.occupied_width == 3);
+  CHECK(s.bits.data == 5);
+}
+
+TEST_CASE("Test bv_sext_small2") {
+  bitvector a = bv_mk(8, 127);
+  CHECK(a.occupied_width == 7);
+  bitvector s = bv_sext(a, 16);
+  CHECK(s.width == 16);
+  CHECK(s.occupied_width == 7);
+  CHECK(s.bits.data == 127);
+}
+
+TEST_CASE("Test bv_sext_small3") {
+  bitvector a = bv_mk(8, 255);
+  CHECK(a.occupied_width == 8);
+  bitvector s = bv_sext(a, 16);
+  CHECK(s.width == 16);
+  CHECK(s.occupied_width == 16);
+  CHECK(s.bits.data == 65535);
+}
+
+TEST_CASE("Test bv_print") {
+  puts("bv_mk(3, 5)");
+  bv_print(bv_mk(3, 5));
+  puts("");
+
+  puts("bv_mk(8, 6)");
+  bv_print(bv_mk(8, 6));
+  puts("");
+
+  puts("bv_mk(16, 255)");
+  bv_print(bv_mk(16, 255));
+  puts("");
 }

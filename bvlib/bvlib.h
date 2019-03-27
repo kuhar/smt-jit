@@ -51,7 +51,9 @@ bitvector bv_sext(bitvector n, bv_width width);
 bitvector bva_select(bv_array *arr, bv_word n);
 
 void bv_print(bitvector v);
+void bv_fprint(void *file, bitvector v);
 void bva_print(bv_array *arr);
+void bva_fprint(void *file, bv_array *arr);
 }
 
 #endif
