@@ -1,4 +1,6 @@
 #include "bvlib.h"
+
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 
@@ -42,6 +44,50 @@ constexpr bv_word maskOverflow(bv_word n, bv_width width) {
 constexpr bv_word maskLowerBits(bv_word n, bv_width width) {
   return (n >> width) << width;
 }
+
+struct BVContext {
+  char *memBegin = nullptr;
+  char *memEnd = nullptr;
+  char *memNext = nullptr;
+  static constexpr size_t PoolBytes = 1 << 24;
+  static constexpr size_t PoolWords = PoolBytes / BVWordBytes;
+
+  static BVContext &get() {
+    static BVContext ctx;
+
+    if (!ctx.memBegin)
+      ctx.init();
+
+    return ctx;
+  }
+
+  bv_width remainingWords() const { return (memEnd - memNext) / BVWordBytes; }
+
+  char *alloc_bytes(bv_width n) {
+    char *const ret = memNext;
+
+    const bv_width toBump = n + n % BVWordBytes;
+    BVLIB_ASSERT(toBump <= memEnd - memBegin);
+    memNext += toBump;
+
+    return ret;
+  }
+
+  char *alloc_words(bv_width n) {
+    BVLIB_ASSERT(remainingWords() >= n);
+    return alloc_bytes(n * BVWordBytes);
+  }
+
+  void init() {
+    memNext = memBegin = (char *)calloc(PoolWords, BVWordBytes);
+    memEnd = memBegin + PoolWords * BVWordBytes;
+  }
+
+  static void teardown() {
+    BVContext &ctx = get();
+    free(ctx.memBegin);
+  }
+};
 
 } // namespace
 
@@ -195,6 +241,24 @@ bitvector bv_sext(bitvector n, bv_width width) {
   return res;
 }
 
+bv_array *bva_mk(bv_width width, bv_width len) {
+  return bva_mk_init(width, len, nullptr);
+}
+
+bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants) {
+  bv_width wordsToAlloc = len + 2;
+  char *bytes = BVContext::get().alloc_words(wordsToAlloc);
+  bv_array *arr = (bv_array *)bytes;
+  arr->len = len;
+
+  for (bv_width i = 0; i != len; ++i)
+    arr->values[i] = bv_mk(width, constants ? constants[i] : 0);
+
+  return arr;
+}
+
+void bv_teardown_context() { BVContext::get().teardown(); }
+
 bitvector bva_select(bv_array *arr, bv_word n) {
   BVLIB_ASSERT(arr);
   BVLIB_ASSERT(n < arr->len);
@@ -234,4 +298,5 @@ void bva_fprint(void *file, bv_array *arr) {
 }
 
 void bva_print(bv_array *arr) { bva_fprint(stdout, arr); }
-}
+
+} // extern "C"
