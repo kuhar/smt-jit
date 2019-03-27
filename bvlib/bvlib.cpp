@@ -25,6 +25,9 @@ constexpr bv_width numWordsNeeded(bv_width width) {
 }
 
 constexpr bv_width numBitsNeeded(bv_word n) {
+  if (n == 0)
+    return 0;
+
   bv_width res = 1;
   while (n >>= 1)
     ++res;
@@ -138,13 +141,13 @@ bitvector bv_concat(bitvector a, bitvector b) {
   BVLIB_ASSERT(a.occupied_width <= a.width);
   BVLIB_ASSERT(b.occupied_width <= b.width);
 
-  const bv_width bitsNeeded = a.width + a.occupied_width;
+  const bv_width bitsNeeded = a.width + b.occupied_width;
   const bv_width wordsNeeded = numWordsNeeded(bitsNeeded);
   if (wordsNeeded > 1)
     BVLIB_ASSERT(false);
 
-  const bv_word bits = (a.bits.data << a.width) | b.bits.data;
-  bitvector res = {a.width + a.width, bitsNeeded, {bits}};
+  const bv_word bits = (b.bits.data << a.width) | a.bits.data;
+  bitvector res = {a.width + b.width, bitsNeeded, {bits}};
   return res;
 }
 
@@ -153,16 +156,20 @@ bitvector bv_extract(bitvector a, bv_width from, bv_width to) {
   BVLIB_ASSERT(from <= to);
 
   const bv_width end = to + 1;
-  const bv_width bitsNeeded =
-      min(end - from, max(a.occupied_width, from) - from);
+  const bv_width newWidth = end - from;
+  const bv_width bitsNeeded = min(newWidth, max(a.occupied_width, from) - from);
   const bv_width wordsNeeded = numWordsNeeded(bitsNeeded);
   if (wordsNeeded > 1)
     BVLIB_ASSERT(false);
 
-  const bv_width lsh_amount = BVWordBits - to;
+  const bv_width lsh_amount = BVWordBits - to - 1;
   const bv_width rsh_amount = lsh_amount + from;
-  bv_word bits = (a.bits.data << lsh_amount) >> rsh_amount;
-  bitvector res = {bitsNeeded, bitsNeeded, {bits}};
+  const bv_word shifted1 = a.bits.data << lsh_amount;
+  const bv_word bits = shifted1 >> rsh_amount;
+  // printf("orig %08llx, lsh_amount %u, rsh_amount %u, shifted1 %08llx,"
+  //        " final: %08llx\n",
+  // 	     a.bits.data, lsh_amount, rsh_amount, shifted1, bits);
+  bitvector res = {newWidth, bitsNeeded, {bits}};
   return res;
 }
 
@@ -173,7 +180,11 @@ bitvector bv_zext(bitvector n, bv_width width) {
 
 bitvector bv_sext(bitvector n, bv_width width);
 
-bitvector bva_select(bv_array *arr, bv_word n);
+bitvector bva_select(bv_array *arr, bv_word n) {
+  BVLIB_ASSERT(arr);
+  BVLIB_ASSERT(n < arr->len);
+  return arr->values[n];
+}
 
 void bv_print(bitvector v);
 void bva_print(bv_array *arr);
