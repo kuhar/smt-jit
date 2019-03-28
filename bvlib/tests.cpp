@@ -26,6 +26,14 @@ TEST_CASE("Test bv_mk") {
   CHECK(v.bits.data == 12345);
 }
 
+TEST_CASE("Test bv_mk_max") {
+  bitvector v = bv_mk(64, ~bv_word(0));
+
+  CHECK(v.width == 64);
+  CHECK(v.occupied_width == 64);
+  CHECK(v.bits.data == ~bv_word(0));
+}
+
 TEST_CASE("Test bv_add_simple1") {
   bitvector a = bv_mk(8, 12);
   bitvector b = bv_mk(8, 13);

@@ -27,9 +27,14 @@ constexpr bv_width numWordsNeeded(bv_width width) {
 }
 
 constexpr bv_width numBitsNeeded(bv_word n) {
-  bv_width res = n == 0 ? 0 : 1;
-  while (n >>= 1)
-    ++res;
+  bv_width res = 0;
+
+#pragma unroll
+  for (bv_width i = 0; i != BVWordBits; ++i) {
+    res += n != 0 ? 1 : 0;
+    n >>= 1;
+  }
+
   return res;
 }
 
@@ -37,7 +42,7 @@ constexpr bv_width min(bv_width a, bv_width b) { return a < b ? a : b; }
 constexpr bv_width max(bv_width a, bv_width b) { return a < b ? b : a; }
 
 constexpr bv_word maskOverflow(bv_word n, bv_width width) {
-  const bv_width shiftAmount = (width <= BVWordBits) ? BVWordBits - width : 0;
+  const bv_width shiftAmount = (width < BVWordBits) ? BVWordBits - width : 0;
   return (n << shiftAmount) >> shiftAmount;
 }
 
@@ -100,7 +105,7 @@ bitvector bv_mk(bv_width width, bv_word n) {
   BVLIB_ASSERT(n >= 0);
   (void)BVWordMax;
 
-  const bv_width bits = maskOverflow(n, width);
+  const bv_word bits = maskOverflow(n, width);
   const bv_width bitsNeeded = numBitsNeeded(bits);
   BVLIB_ASSERT(numWordsNeeded(bitsNeeded) == 1);
   bitvector res = {width, bitsNeeded, {bits}};
