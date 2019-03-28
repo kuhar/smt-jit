@@ -386,3 +386,63 @@ TEST_CASE("Test bv_print") {
   bv_print(bv_mk(16, 255));
   puts("");
 }
+
+TEST_CASE("Test bva_mk_zeros") {
+  bv_init_context();
+
+  bv_array *arr = bva_mk(16, 6);
+  CHECK(arr != nullptr);
+  CHECK(arr->len == 6);
+
+  for (size_t i = 0; i != 6; ++i) {
+    bitvector a = bva_select(arr, i);
+    CHECK(bv_eq(a, bv_zero()) == 1);
+  }
+
+  bva_print(arr);
+  puts("");
+
+  bv_teardown_context();
+}
+
+TEST_CASE("Test bva_mk_init") {
+  bv_init_context();
+
+  bv_word numbers[5] = {1, 2, 3, 4, 5};
+
+  bv_array *arr = bva_mk_init(16, 5, numbers);
+  CHECK(arr != nullptr);
+  CHECK(arr->len == 5);
+
+  for (size_t i = 0; i != 5; ++i) {
+    bitvector a = bva_select(arr, i);
+    CHECK(bv_eq(a, bv_mk(16, numbers[i])) == 1);
+  }
+
+  bva_print(arr);
+  puts("");
+
+  bv_teardown_context();
+}
+
+TEST_CASE("Test bva_mk_multiple") {
+  bv_init_context();
+
+  bv_word numbers[5] = {1, 2, 3, 4, 5};
+
+  for (size_t i = 0; i < 100; ++i) {
+    numbers[0] = i;
+
+    bv_array *arr1 = bva_mk_init(16, 5, numbers);
+    CHECK(arr1 != nullptr);
+    CHECK(arr1->len == 5);
+
+    bv_array *arr2 = bva_mk_init(16, 5, numbers);
+    CHECK(arr2 != nullptr);
+    CHECK(arr2->len == 5);
+
+    CHECK(arr1 != arr2);
+  }
+
+  bv_teardown_context();
+}

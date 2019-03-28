@@ -300,7 +300,11 @@ bitvector bva_select(bv_array *arr, bv_word n) {
 void bv_fprint(void *file, bitvector v) {
   BVLIB_ASSERT(v.occupied_width <= BVWordBits);
 
-  fprintf((FILE *)file, "{w: %u, ow: %u, [", v.width, v.occupied_width);
+  fprintf((FILE *)file, "{w: %u, ow: %u, ", v.width, v.occupied_width);
+  if (v.occupied_width <= BVWordBits)
+    fprintf((FILE *)file, "n: %llu, [", v.bits.data);
+  else
+    fprintf((FILE *)file, "[");
 
   const bv_word n = v.bits.data;
   for (bv_width i = 0, e = v.occupied_width; i != e; ++i) {
@@ -318,11 +322,13 @@ void bv_fprint(void *file, bitvector v) {
 void bv_print(bitvector v) { bv_fprint(stdout, v); }
 
 void bva_fprint(void *file, bv_array *arr) {
-  fprintf((FILE *)file, "[");
+  BVLIB_ASSERT(arr);
+
+  fprintf((FILE *)file, "(arr.len: %llu) [", arr->len);
 
   for (bv_width i = 0, e = arr->len; i != e; ++i) {
     bv_fprint(file, arr->values[i]);
-    if (i + i != e)
+    if (i + 1 != e)
       fprintf((FILE *)file, ", ");
   }
 
