@@ -50,7 +50,11 @@ bitvector bv_sext(bitvector n, bv_width width);
 
 bv_array *bva_mk(bv_width width, bv_width len);
 bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants);
+
 bitvector bva_select(bv_array *arr, bv_word n);
+
+void bv_init_context();
+void bv_teardown_context();
 
 void bv_print(bitvector v);
 void bv_fprint(void *file, bitvector v);

@@ -37,7 +37,7 @@ constexpr bv_width min(bv_width a, bv_width b) { return a < b ? a : b; }
 constexpr bv_width max(bv_width a, bv_width b) { return a < b ? b : a; }
 
 constexpr bv_word maskOverflow(bv_word n, bv_width width) {
-  const bv_width shiftAmount = BVWordBits - width;
+  const bv_width shiftAmount = (width <= BVWordBits) ? BVWordBits - width : 0;
   return (n << shiftAmount) >> shiftAmount;
 }
 
@@ -54,10 +54,6 @@ struct BVContext {
 
   static BVContext &get() {
     static BVContext ctx;
-
-    if (!ctx.memBegin)
-      ctx.init();
-
     return ctx;
   }
 
@@ -94,8 +90,8 @@ struct BVContext {
 extern "C" {
 
 bitvector bv_true() { return {1, 1, {1}}; }
-bitvector bv_false() { return {1, 1, {0}}; }
-bitvector bv_bool(int b) { return {1, 1, {bv_word(b == 0 ? 0 : 1)}}; }
+bitvector bv_false() { return {1, 0, {0}}; }
+bitvector bv_bool(int b) { return b == 0 ? bv_false() : bv_true(); }
 
 bitvector bv_mk(bv_width width, bv_word n) {
   if (width < BVWordBits)
@@ -104,9 +100,10 @@ bitvector bv_mk(bv_width width, bv_word n) {
   BVLIB_ASSERT(n >= 0);
   (void)BVWordMax;
 
-  const bv_width bitsNeeded = numBitsNeeded(n);
+  const bv_width bits = maskOverflow(n, width);
+  const bv_width bitsNeeded = numBitsNeeded(bits);
   BVLIB_ASSERT(numWordsNeeded(bitsNeeded) == 1);
-  bitvector res = {width, bitsNeeded, {bv_word{n}}};
+  bitvector res = {width, bitsNeeded, {bits}};
   return res;
 }
 
@@ -139,6 +136,26 @@ bitvector bv_mul(bitvector a, bitvector b) {
   bv_word bits = maskOverflow(a.bits.data * b.bits.data, a.width);
   bitvector res = {a.width, bitsNeeded, {bits}};
   return res;
+}
+
+bitvector bv_ult(bitvector a, bitvector b) {
+  BVLIB_ASSERT(a.width == b.width);
+  BVLIB_ASSERT(a.occupied_width <= a.width);
+  BVLIB_ASSERT(b.occupied_width <= b.width);
+
+  return bv_bool(a.bits.data < b.bits.data);
+}
+
+bitvector bv_slt(bitvector a, bitvector b) {
+  BVLIB_ASSERT(a.width == b.width);
+  BVLIB_ASSERT(a.occupied_width <= a.width);
+  BVLIB_ASSERT(b.occupied_width <= b.width);
+
+  const bv_word a_sign_bit = a.bits.data >> (a.width - 1);
+  const bv_word b_sign_bit = b.bits.data >> (b.width - 1);
+  const bool flipRes = a_sign_bit != b_sign_bit;
+  const bool cmp = (a.bits.data < b.bits.data);
+  return bv_bool(flipRes ? !cmp : cmp);
 }
 
 bitvector bv_and(bitvector a, bitvector b) {
@@ -257,6 +274,7 @@ bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants) {
   return arr;
 }
 
+void bv_init_context() { BVContext::get().init(); }
 void bv_teardown_context() { BVContext::get().teardown(); }
 
 bitvector bva_select(bv_array *arr, bv_word n) {
