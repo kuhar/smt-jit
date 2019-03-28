@@ -133,55 +133,37 @@ TEST_CASE("Test bv_mul_overflow2") {
 TEST_CASE("Test bv_ult_simple1") {
   bitvector a = bv_mk(8, 4);
   bitvector b = bv_mk(8, 13);
-  bitvector s = bv_ult(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 1);
-  CHECK(s.bits.data == 1);
+  CHECK(bv_ult(a, b) == 1);
 }
 
 TEST_CASE("Test bv_ult_simple2") {
   bitvector a = bv_mk(8, 13);
   bitvector b = bv_mk(8, 4);
-  bitvector s = bv_ult(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 0);
-  CHECK(s.bits.data == 0);
+  CHECK(bv_ult(a, b) == 0);
 }
 
 TEST_CASE("Test bv_slt_pos_pos1") {
   bitvector a = bv_mk(8, 3);
   bitvector b = bv_mk(8, 5);
-  bitvector s = bv_slt(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 1);
-  CHECK(s.bits.data == 1);
+  CHECK(bv_slt(a, b) == 1);
 }
 
 TEST_CASE("Test bv_slt_pos_pos2") {
   bitvector a = bv_mk(8, 5);
   bitvector b = bv_mk(8, 3);
-  bitvector s = bv_slt(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 0);
-  CHECK(s.bits.data == 0);
+  CHECK(bv_slt(a, b) == 0);
 }
 
 TEST_CASE("Test bv_slt_neg_neg1") {
   bitvector a = bv_mk(8, -5);
   bitvector b = bv_mk(8, -3);
-  bitvector s = bv_slt(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 1);
-  CHECK(s.bits.data == 1);
+  CHECK(bv_slt(a, b) == 1);
 }
 
 TEST_CASE("Test bv_slt_neg_neg2") {
   bitvector a = bv_mk(8, -3);
   bitvector b = bv_mk(8, -5);
-  bitvector s = bv_slt(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 0);
-  CHECK(s.bits.data == 0);
+  CHECK(bv_slt(a, b) == 0);
 }
 
 TEST_CASE("Test bv_slt_neg_zero") {
@@ -195,37 +177,40 @@ TEST_CASE("Test bv_slt_neg_zero") {
   CHECK(b.occupied_width == 0);
   CHECK(b.bits.data == 0);
 
-  bitvector s = bv_slt(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 1);
-  CHECK(s.bits.data == 1);
+  CHECK(bv_slt(a, b) == 1);
 }
 
 TEST_CASE("Test bv_slt_zero_neg") {
   bitvector a = bv_mk(8, 0);
   bitvector b = bv_mk(8, -3);
-  bitvector s = bv_slt(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 0);
-  CHECK(s.bits.data == 0);
+  CHECK(bv_slt(a, b) == 0);
 }
 
 TEST_CASE("Test bv_slt_neg_pos") {
   bitvector a = bv_mk(8, -3);
   bitvector b = bv_mk(8, 11);
-  bitvector s = bv_slt(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 1);
-  CHECK(s.bits.data == 1);
+  CHECK(bv_slt(a, b) == 1);
 }
 
-TEST_CASE("Test bv_slt_pod_neg") {
+TEST_CASE("Test bv_slt_pos_neg") {
   bitvector a = bv_mk(8, 11);
   bitvector b = bv_mk(8, -3);
-  bitvector s = bv_slt(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 0);
-  CHECK(s.bits.data == 0);
+  CHECK(bv_slt(a, b) == 0);
+}
+
+TEST_CASE("Test bv_eq_simple1") {
+  bitvector a = bv_mk(8, 7);
+  bitvector b = bv_mk(8, 8);
+  CHECK(a.occupied_width == 3);
+  CHECK(b.occupied_width == 4);
+
+  CHECK(bv_eq(a, b) == 0);
+}
+
+TEST_CASE("Test bv_eq_simple2") {
+  bitvector a = bv_mk(8, 7);
+  bitvector b = bv_mk(8, 7);
+  CHECK(bv_eq(a, b) == 1);
 }
 
 TEST_CASE("Test bv_and_simple1") {
@@ -274,27 +259,6 @@ TEST_CASE("Test bv_and_simple2") {
   CHECK(s.width == 8);
   CHECK(s.occupied_width == 4);
   CHECK(s.bits.data == 15);
-}
-
-TEST_CASE("Test bv_eq_simple1") {
-  bitvector a = bv_mk(8, 7);
-  bitvector b = bv_mk(8, 8);
-  CHECK(a.occupied_width == 3);
-  CHECK(b.occupied_width == 4);
-
-  bitvector s = bv_eq(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 0);
-  CHECK(s.bits.data == 0);
-}
-
-TEST_CASE("Test bv_eq_simple2") {
-  bitvector a = bv_mk(8, 7);
-  bitvector b = bv_mk(8, 7);
-  bitvector s = bv_eq(a, b);
-  CHECK(s.width == 1);
-  CHECK(s.occupied_width == 1);
-  CHECK(s.bits.data == 1);
 }
 
 TEST_CASE("Test bv_concat1") {

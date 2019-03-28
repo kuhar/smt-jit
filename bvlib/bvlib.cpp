@@ -29,7 +29,6 @@ constexpr bv_width numWordsNeeded(bv_width width) {
 constexpr bv_width numBitsNeeded(bv_word n) {
   bv_width res = 0;
 
-#pragma unroll
   for (bv_width i = 0; i != BVWordBits; ++i) {
     res += n != 0 ? 1 : 0;
     n >>= 1;
@@ -64,7 +63,7 @@ struct BVContext {
 
   bv_width remainingWords() const { return (memEnd - memNext) / BVWordBytes; }
 
-  char *alloc_bytes(bv_width n) {
+  [[ gnu::alloc_size(2), gnu::returns_nonnull ]] char *alloc_bytes(bv_width n) {
     char *const ret = memNext;
 
     const bv_width toBump = n + n % BVWordBytes;
@@ -94,9 +93,9 @@ struct BVContext {
 
 extern "C" {
 
-bitvector bv_true() { return {1, 1, {1}}; }
-bitvector bv_false() { return {1, 0, {0}}; }
-bitvector bv_bool(int b) { return b == 0 ? bv_false() : bv_true(); }
+bitvector bv_zero() { return {1, 0, {0}}; }
+bitvector bv_one() { return {1, 1, {1}}; }
+bitvector bv_bool(int b) { return b == 0 ? bv_zero() : bv_one(); }
 
 bitvector bv_mk(bv_width width, bv_word n) {
   if (width < BVWordBits)
@@ -143,15 +142,15 @@ bitvector bv_mul(bitvector a, bitvector b) {
   return res;
 }
 
-bitvector bv_ult(bitvector a, bitvector b) {
+int bv_ult(bitvector a, bitvector b) {
   BVLIB_ASSERT(a.width == b.width);
   BVLIB_ASSERT(a.occupied_width <= a.width);
   BVLIB_ASSERT(b.occupied_width <= b.width);
 
-  return bv_bool(a.bits.data < b.bits.data);
+  return a.bits.data < b.bits.data;
 }
 
-bitvector bv_slt(bitvector a, bitvector b) {
+int bv_slt(bitvector a, bitvector b) {
   BVLIB_ASSERT(a.width == b.width);
   BVLIB_ASSERT(a.occupied_width <= a.width);
   BVLIB_ASSERT(b.occupied_width <= b.width);
@@ -160,7 +159,15 @@ bitvector bv_slt(bitvector a, bitvector b) {
   const bv_word b_sign_bit = b.bits.data >> (b.width - 1);
   const bool flipRes = a_sign_bit != b_sign_bit;
   const bool cmp = (a.bits.data < b.bits.data);
-  return bv_bool(flipRes ? !cmp : cmp);
+  return flipRes ? !cmp : cmp;
+}
+
+int bv_eq(bitvector a, bitvector b) {
+  BVLIB_ASSERT(a.width == b.width);
+  BVLIB_ASSERT(a.occupied_width <= a.width);
+  BVLIB_ASSERT(b.occupied_width <= b.width);
+
+  return a.bits.data == b.bits.data;
 }
 
 bitvector bv_and(bitvector a, bitvector b) {
@@ -191,20 +198,6 @@ bitvector bv_or(bitvector a, bitvector b) {
   bv_word bits = a.bits.data | b.bits.data;
   bitvector res = {a.width, bitsNeeded, {bits}};
   return res;
-}
-
-bitvector bv_eq(bitvector a, bitvector b) {
-  BVLIB_ASSERT(a.width == b.width);
-  BVLIB_ASSERT(a.occupied_width <= a.width);
-  BVLIB_ASSERT(b.occupied_width <= b.width);
-
-  const bv_width wordsNeeded =
-      numWordsNeeded(max(a.occupied_width, b.occupied_width));
-  if (wordsNeeded > 1)
-    BVLIB_ASSERT(false);
-
-  const int res = a.bits.data == b.bits.data;
-  return bv_bool(res);
 }
 
 bitvector bv_concat(bitvector a, bitvector b) {
@@ -245,6 +238,8 @@ bitvector bv_extract(bitvector a, bv_width from, bv_width to) {
 
 bitvector bv_zext(bitvector n, bv_width width) {
   BVLIB_ASSERT(n.occupied_width <= n.width);
+  BVLIB_ASSERT(n.width <= width);
+
   return {width, n.occupied_width, n.bits};
 }
 
@@ -264,17 +259,31 @@ bitvector bv_sext(bitvector n, bv_width width) {
 }
 
 bv_array *bva_mk(bv_width width, bv_width len) {
-  return bva_mk_init(width, len, nullptr);
-}
-
-bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants) {
   bv_width wordsToAlloc = len + 2;
   char *bytes = BVContext::get().alloc_words(wordsToAlloc);
   bv_array *arr = (bv_array *)bytes;
   arr->len = len;
 
   for (bv_width i = 0; i != len; ++i)
-    arr->values[i] = bv_mk(width, constants ? constants[i] : 0);
+    arr->values[i].width = width;
+
+  return arr;
+}
+
+bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants) {
+  BVLIB_ASSERT(constants);
+
+  bv_width wordsToAlloc = len + 2;
+  char *bytes = BVContext::get().alloc_words(wordsToAlloc);
+  bv_array *arr = (bv_array *)bytes;
+  arr->len = len;
+
+  for (bv_width i = 0; i != len; ++i) {
+    if (constants[i] != 0)
+      arr->values[i] = bv_mk(width, constants[i]);
+    else
+      arr->values[i].width = width;
+  }
 
   return arr;
 }

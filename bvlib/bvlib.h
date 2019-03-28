@@ -26,8 +26,8 @@ struct bv_array_t {
 };
 typedef struct bv_array_t bv_array;
 
-bitvector bv_false();
-bitvector bv_true();
+bitvector bv_zero();
+bitvector bv_one();
 bitvector bv_bool(int b);
 
 bitvector bv_mk(bv_width width, bv_word n);
@@ -35,12 +35,15 @@ bitvector bv_mk(bv_width width, bv_word n);
 bitvector bv_add(bitvector a, bitvector b);
 bitvector bv_mul(bitvector a, bitvector b);
 
-bitvector bv_ult(bitvector a, bitvector b);
-bitvector bv_slt(bitvector a, bitvector b);
+// LT: 1, GEQ: 0
+int bv_ult(bitvector a, bitvector b);
+// LT: 1, GEQ: 0
+int bv_slt(bitvector a, bitvector b);
+// EQ: 1, NEQ: 0
+int bv_eq(bitvector a, bitvector b);
 
 bitvector bv_and(bitvector a, bitvector b);
 bitvector bv_or(bitvector a, bitvector b);
-bitvector bv_eq(bitvector a, bitvector b);
 
 bitvector bv_concat(bitvector a, bitvector b);
 
