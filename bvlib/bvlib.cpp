@@ -80,13 +80,10 @@ struct BVContext {
 
   void init() {
     memNext = memBegin = (char *)calloc(PoolWords, BVWordBytes);
-    memEnd = memBegin + PoolWords * BVWordBytes;
+    memEnd = memBegin + PoolBytes;
   }
 
-  static void teardown() {
-    BVContext &ctx = get();
-    free(ctx.memBegin);
-  }
+  void teardown() { free(memBegin); }
 };
 
 } // namespace
