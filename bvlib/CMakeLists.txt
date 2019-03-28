@@ -16,8 +16,8 @@ set(SOURCES
 )
 
 enable_testing()
-add_executable(tests doctest_main.cpp tests.cpp ${SOURCES})
-add_test(NAME bvlib_tests COMMAND tests DEPENDS tests)
+add_executable(bvlib_tests doctest_main.cpp bvlib_tests.cpp ${SOURCES})
+add_test(NAME bvlib_tests COMMAND bvlib_tests DEPENDS bvlib_tests)
 
 add_custom_command(OUTPUT bvlib_bitcode
                    COMMAND ${CMAKE_CXX_COMPILER}
@@ -36,3 +36,5 @@ add_custom_command(OUTPUT bvlib_ir
                            ${CMAKE_CURRENT_SOURCE_DIR}/bvlib.cpp)
 
 add_custom_target(bvlib_bitcode.bc ALL DEPENDS bvlib_bitcode bvlib_ir)
+
+add_executable(eval_ex1 eval_ex1.cpp ${SOURCES})

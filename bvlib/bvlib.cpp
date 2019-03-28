@@ -291,10 +291,14 @@ bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants) {
 void bv_init_context() { BVContext::get().init(); }
 void bv_teardown_context() { BVContext::get().teardown(); }
 
-bitvector bva_select(bv_array *arr, bv_word n) {
+bitvector bva_select(bv_array *arr, bitvector n) {
   BVLIB_ASSERT(arr);
-  BVLIB_ASSERT(n < arr->len);
-  return arr->values[n];
+  BVLIB_ASSERT(n.occupied_width < BVWordBits);
+
+  bv_word i = n.bits.data;
+  BVLIB_ASSERT(i < arr->len);
+
+  return arr->values[i];
 }
 
 void bv_fprint(void *file, bitvector v) {

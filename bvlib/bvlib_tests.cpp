@@ -395,7 +395,7 @@ TEST_CASE("Test bva_mk_zeros") {
   CHECK(arr->len == 6);
 
   for (size_t i = 0; i != 6; ++i) {
-    bitvector a = bva_select(arr, i);
+    bitvector a = bva_select(arr, bv_mk(32, i));
     CHECK(bv_eq(a, bv_zero()) == 1);
   }
 
@@ -415,7 +415,7 @@ TEST_CASE("Test bva_mk_init") {
   CHECK(arr->len == 5);
 
   for (size_t i = 0; i != 5; ++i) {
-    bitvector a = bva_select(arr, i);
+    bitvector a = bva_select(arr, bv_mk(32, i));
     CHECK(bv_eq(a, bv_mk(16, numbers[i])) == 1);
   }
 
