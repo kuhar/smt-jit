@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
 
-set(CMAKE_CXX_STANDARD 11)
-
 message(STATUS "LLVM_DIR is ${LLVM_DIR}")
 find_package(LLVM 9.0 REQUIRED CONFIG EXACT PATHS ${LLVM_DIR})
 
@@ -26,7 +24,6 @@ set(LLVM_LINK_COMPONENTS
   Core
   ExecutionEngine
   IRReader
-  Interpreter
   Instrumentation 
   IPO
   MC
@@ -45,5 +42,3 @@ add_executable(smt-jit smt-jit.cpp)
 llvm_config(smt-jit ${LLVM_LINK_COMPONENTS})
 
 message(STATUS "CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
-
-
