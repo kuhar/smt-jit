@@ -21,6 +21,7 @@ add_definitions(${LLVM_DEFINITIONS})
 
 add_compile_options(-fno-rtti)
 add_compile_options(-fno-exceptions)
+add_compile_options(-march=native)
 
 if (SMTJIT_USE_LINKER)
   set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})

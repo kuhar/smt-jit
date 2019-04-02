@@ -35,7 +35,8 @@ add_custom_command(OUTPUT bvlib_ir
                            -o bvlib.ll
                            ${CMAKE_CURRENT_SOURCE_DIR}/bvlib.cpp)
 
-add_custom_target(bvlib_bitcode.bc ALL DEPENDS bvlib_bitcode bvlib_ir)
+
+add_custom_target(bvlib_bitcode.bc ALL DEPENDS bvlib_ir)
 
 add_executable(eval_ex1 eval_ex1.cpp ${BVLIB_SOURCES})
 

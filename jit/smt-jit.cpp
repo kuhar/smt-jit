@@ -25,10 +25,18 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO.h"
 
+#include "bvlib/bvlib.h"
+
 #define SEXPRESSO_OPT_OUT_PIKESTYLE
 #include "sexpresso.hpp"
 
+#include <cstdio>
+
 using namespace llvm;
+
+static cl::list<std::string>
+    InputFilenames(cl::Positional, cl::OneOrMore,
+                   cl::desc("<input smtlib2 files>"));
 
 class SmtJit {
 private:
@@ -84,6 +92,8 @@ public:
   }
 };
 
+void dummyFun() {}
+
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;
   llvm::cl::ParseCommandLineOptions(argc, argv, "SMT JIT");
@@ -96,35 +106,62 @@ int main(int argc, char **argv) {
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
 
-  llvm::errs() << "Elo!\n";
+  const std::string exePath =
+      llvm::sys::fs::getMainExecutable(argv[0], (void *)&dummyFun);
+  const llvm::StringRef exePathRef = exePath;
+  const std::string exeDir = exePathRef.substr(0, exePathRef.rfind('/')).str();
+
+  llvm::errs() << "Running in directory: " << exeDir << "\n";
 
   auto errJit = SmtJit::Create();
   if (!errJit) {
     llvm::errs() << "Could not create smt-jit: " << errJit.takeError() << "\n";
-    std::abort();
+    return 2;
   }
 
   std::unique_ptr<SmtJit> jit = std::move(errJit.get());
 
   SMDiagnostic error;
-  std::unique_ptr<Module> m = parseIRFile("test.ll", error, jit->getContext());
+  const std::string bvlibBitcodePath = exeDir + "/bvlib/bvlib.ll";
+  std::unique_ptr<Module> m =
+      parseIRFile(bvlibBitcodePath, error, jit->getContext());
+  if (!m) {
+    llvm::errs() << "Could not load bitcode module: " << bvlibBitcodePath
+                 << "\nError: \n";
+    error.print(argv[0], llvm::errs());
+    return 1;
+  }
 
   auto errAddModule = jit->addModule(std::move(m));
   if (errAddModule) {
     llvm::errs() << "Could not load module: " << errAddModule << "\n";
-    std::abort();
+    return 2;
   }
 
-  auto errLookup = jit->lookup("foo");
+  auto errLookup = jit->lookup("bv_print");
   if (!errLookup) {
     llvm::errs() << "Lookup failed: " << errLookup.takeError() << "\n";
-    std::abort();
+    return 2;
   }
 
-  auto *foo = (void (*)(void))errLookup->getAddress();
-  foo();
+  llvm::outs() << "[Startup-sanity-check] About to print bv_mk(8, 42):\n\t";
+  auto *bv_printPtr = (void (*)(bitvector))errLookup->getAddress();
+  llvm::outs() << "\n";
+  llvm::outs().flush();
 
-  auto parsetree = sexpresso::parse("()");
+  const bitvector test_bv = bv_mk(8, 42);
+  bv_printPtr(test_bv);
+
+  llvm::outs() << "\nInput files: \n";
+  for (const std::string &filename : InputFilenames) {
+    llvm::outs() << "\t" << filename << "\n";
+
+    if (!llvm::sys::fs::exists(filename)) {
+      llvm::outs().flush();
+      llvm::errs() << "\nFile " << filename << " does not exits!\n";
+      return 1;
+    }
+  }
 
   return 0;
 }
