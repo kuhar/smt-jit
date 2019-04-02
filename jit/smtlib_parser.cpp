@@ -153,8 +153,8 @@ void SmtLibParser::parseArrayDecl(const std::string &line) {
   assert(indexing.childCount() == 3);
   assert(indexing.getChild(0).isString());
   assert(indexing.getChild(1).isString());
-  assert(indexing.getChild(2).isString());
-  assert(indexing.getChild(2).getString() == "32");
+  assert(indexing.getChild(2).isNumber());
+  assert(indexing.getChild(2).toNumber() == 32ll);
 
   Sexp &elementTy = ret.getChild(2);
   assert(elementTy.isSexp());
@@ -163,12 +163,13 @@ void SmtLibParser::parseArrayDecl(const std::string &line) {
   assert(elementTy.getHead().getString() == "_");
   assert(elementTy.getChild(1).isString());
   assert(elementTy.getChild(1).getString() == "BitVec");
-  assert(elementTy.getChild(2).isString());
+  assert(elementTy.getChild(2).isNumber());
 
-  const std::string elemWidthStr = elementTy.getChild(2).getString();
-  const unsigned long elemWidth = std::stoul(elemWidthStr);
+  const long long num = elementTy.getChild(2).toNumber();
+  assert(num > 0);
+  const unsigned elemWidth = (unsigned) num;
 
-  ArrayInfo ai = {(unsigned) elemWidth, true, arrayName};
+  ArrayInfo ai = {elemWidth, true, arrayName};
   m_arrays.push_back(ai);
 }
 
