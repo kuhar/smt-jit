@@ -57,13 +57,27 @@ set(LLVM_LINK_COMPONENTS
   native
   )
 
-add_executable(smt-jit smt-jit.cpp)
+set(SMTJIT_SOURCES
+  smtlib_parser.cpp
+)
+
+add_executable(smt-jit smt-jit.cpp
+  ${SMTJIT_SOURCES}
+)
 
 llvm_config(smt-jit ${LLVM_LINK_COMPONENTS})
-
 target_include_directories(smt-jit PUBLIC ${CMAKE_SOURCE_DIR}/sexpresso)
 target_link_libraries(smt-jit LINK_PUBLIC sexpresso)
 
 message(STATUS "CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 
+add_executable(test-smt-jit doctest_main_smt_jit.cpp
+  ${SMTJIT_SOURCES}
+  parser_tests.cpp
+)
+llvm_config(test-smt-jit ${LLVM_LINK_COMPONENTS})
+target_include_directories(test-smt-jit PUBLIC ${CMAKE_SOURCE_DIR}/sexpresso)
+target_link_libraries(test-smt-jit LINK_PUBLIC sexpresso)
 
+enable_testing()
+add_test(NAME test-smt-jit COMMAND test-smt-jit DEPENDS test-smt-jit)
