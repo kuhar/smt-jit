@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
+project(smt-jit)
+
 message(STATUS "LLVM_DIR is ${LLVM_DIR}")
 find_package(LLVM 9.0 REQUIRED CONFIG EXACT PATHS ${LLVM_DIR})
 
@@ -33,6 +35,8 @@ if (SMTJIT_USE_LINKER)
   message(STATUS "Using linker: ${SMTJIT_USE_LINKER}")
 endif()
 
+add_subdirectory(sexpresso)
+
 set(LLVM_LINK_COMPONENTS 
   CodeGen
   Core
@@ -54,7 +58,11 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_executable(smt-jit smt-jit.cpp)
+
 llvm_config(smt-jit ${LLVM_LINK_COMPONENTS})
+
+target_include_directories(smt-jit PUBLIC ${CMAKE_SOURCE_DIR}/sexpresso)
+target_link_libraries(smt-jit LINK_PUBLIC sexpresso)
 
 message(STATUS "CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 

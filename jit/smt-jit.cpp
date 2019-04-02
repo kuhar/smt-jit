@@ -8,12 +8,14 @@
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/DataLayout.h"
 
+#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
@@ -22,8 +24,9 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Bitcode/BitcodeReader.h"
-#include "llvm/IR/Verifier.h"
+
+#define SEXPRESSO_OPT_OUT_PIKESTYLE
+#include "sexpresso/sexpresso.hpp"
 
 using namespace llvm;
 
@@ -84,7 +87,7 @@ public:
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;
   llvm::cl::ParseCommandLineOptions(argc, argv, "SMT JIT");
-                                    
+
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::PrettyStackTraceProgram PSTP(argc, argv);
 
@@ -104,8 +107,7 @@ int main(int argc, char **argv) {
   std::unique_ptr<SmtJit> jit = std::move(errJit.get());
 
   SMDiagnostic error;
-  std::unique_ptr<Module> m = parseIRFile("test.ll", error,
-                                          jit.get()->getContext());
+  std::unique_ptr<Module> m = parseIRFile("test.ll", error, jit->getContext());
 
   auto errAddModule = jit->addModule(std::move(m));
   if (errAddModule) {
@@ -119,8 +121,10 @@ int main(int argc, char **argv) {
     std::abort();
   }
 
-  auto *foo = (void (*)(void)) errLookup->getAddress();
+  auto *foo = (void (*)(void))errLookup->getAddress();
   foo();
+
+  auto parsetree = sexpresso::parse("()");
 
   return 0;
 }

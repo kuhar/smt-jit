@@ -1,0 +1,3 @@
+[submodule "jit/sexpresso"]
+	path = jit/sexpresso
+	url = https://github.com/kuhar/sexpresso
