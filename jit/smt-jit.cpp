@@ -26,7 +26,7 @@
 #include "llvm/Transforms/IPO.h"
 
 #define SEXPRESSO_OPT_OUT_PIKESTYLE
-#include "sexpresso/sexpresso.hpp"
+#include "sexpresso.hpp"
 
 using namespace llvm;
 

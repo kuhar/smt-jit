@@ -41,23 +41,38 @@ public:
   void dump(llvm::raw_ostream &os = llvm::errs()) const;
 };
 
+struct ArrayInfo {
+  unsigned element_width;
+  bool is_bitvector;
+  std::string name;
+};
+
 class SmtLibParser {
   std::vector<Assignment> m_assignments;
-  llvm::SmallVector<std::string, 2> m_arrayNames;
+  llvm::SmallVector<ArrayInfo, 2> m_arrays;
   std::vector<std::string> m_assertions;
 
 public:
   SmtLibParser(llvm::StringRef fileName);
   SmtLibParser(std::istream& iss);
 
-  const std::vector<Assignment> &getAllAssignments() const {
+  llvm::ArrayRef<Assignment> assignments() const {
     return m_assignments;
   }
 
+  llvm::ArrayRef<ArrayInfo> arrays() const {
+    return m_arrays;
+  }
+
   size_t numAssignments() const { return m_assignments.size(); }
+  size_t numArrays() const {return m_arrays.size(); }
+  size_t numAssertions() const { return m_assertions.size(); }
 
 private:
   void init(std::istream& iss);
+  void parseAssignment(const std::string &line);
+  void parseArrayDecl(const std::string &line);
+  void parseAssertion(const std::string &line);
 };
 
 } // namespace smt_jit
