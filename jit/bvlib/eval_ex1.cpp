@@ -25,7 +25,11 @@ int main() {
 
   char c = 0;
 
-  while ((std::cin >> c) && c == '[') {
+  while ((std::cin >> c) && c == ';') {
+    while ((std::cin >> c) && c != ':')
+      ;
+    std::cin >> c;
+
     std::vector<bv_word> constants;
 
     while (c != ']') {
@@ -44,6 +48,8 @@ int main() {
 
     int v = eval(arr);
     std::cout << "eval: " << v << "\n";
+
+    std::cin >> c;
   }
 
   bv_teardown_context();

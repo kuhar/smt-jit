@@ -11,12 +11,12 @@ endif()
 set(CMAKE_CXX_STANDARD 14)
 add_compile_options(-fno-rtti -fno-exceptions -Wall -Wextra -pedantic)
 
-set(SOURCES
+set(BVLIB_SOURCES
   bvlib.cpp
 )
 
 enable_testing()
-add_executable(bvlib_tests doctest_main.cpp bvlib_tests.cpp ${SOURCES})
+add_executable(bvlib_tests doctest_main.cpp bvlib_tests.cpp ${BVLIB_SOURCES})
 add_test(NAME bvlib_tests COMMAND bvlib_tests DEPENDS bvlib_tests)
 
 add_custom_command(OUTPUT bvlib_bitcode
@@ -37,4 +37,7 @@ add_custom_command(OUTPUT bvlib_ir
 
 add_custom_target(bvlib_bitcode.bc ALL DEPENDS bvlib_bitcode bvlib_ir)
 
-add_executable(eval_ex1 eval_ex1.cpp ${SOURCES})
+add_executable(eval_ex1 eval_ex1.cpp ${BVLIB_SOURCES})
+
+add_library(bvlib ${BVLIB_SOURCES})
+target_include_directories(bvlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
