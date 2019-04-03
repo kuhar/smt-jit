@@ -264,4 +264,9 @@ TEST_CASE("Test single_assert") {
   CHECK(a0.childCount() == 2);
   CHECK(a0.getHead().isString());
   CHECK(a0.getHead().getString() == "assert");
+
+  llvm::outs() << "assertion: " << a0.toString() << ", children: " << a0.childCount() << "\n";
+  llvm::outs() << "PostOrder assertion:\n";
+  for (sexpresso::SexpPostOrderView view : sexpresso::SexpPostOrderRange(a0))
+    llvm::outs() << view << "\n";
 }
