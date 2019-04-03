@@ -5,7 +5,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
-
+#include "sexpresso.hpp"
 
 #include <cassert>
 #include <iosfwd>
@@ -52,19 +52,16 @@ struct ArrayInfo {
 class SmtLibParser {
   std::vector<Assignment> m_assignments;
   llvm::SmallVector<ArrayInfo, 2> m_arrays;
-  std::vector<std::string> m_assertions;
+  std::vector<sexpresso::Sexp> m_assertions;
 
 public:
   SmtLibParser(llvm::StringRef fileName);
   SmtLibParser(std::istream& iss);
 
-  llvm::ArrayRef<Assignment> assignments() const {
-    return m_assignments;
-  }
-
-  llvm::ArrayRef<ArrayInfo> arrays() const {
-    return m_arrays;
-  }
+  llvm::ArrayRef<Assignment> assignments() const { return m_assignments; }
+  llvm::ArrayRef<ArrayInfo> arrays() const { return m_arrays; }
+  llvm::MutableArrayRef<sexpresso::Sexp> assertions() { return m_assertions; }
+  llvm::ArrayRef<sexpresso::Sexp> assertions() const { return m_assertions; }
 
   size_t numAssignments() const { return m_assignments.size(); }
   size_t numArrays() const {return m_arrays.size(); }

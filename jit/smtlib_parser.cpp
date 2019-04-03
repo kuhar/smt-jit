@@ -2,9 +2,6 @@
 
 #include "llvm/Support/Debug.h"
 
-#define SEXPRESSO_OPT_OUT_PIKESTYLE
-#include "sexpresso.hpp"
-
 #include <fstream>
 #include <sstream>
 
@@ -183,7 +180,7 @@ void SmtLibParser::parseAssertion(const std::string &line) {
   assert(unwrapped.getHead().isString());
   assert(unwrapped.getHead().getString() == "assert");
 
-  m_assertions.push_back(line);
+  m_assertions.push_back(unwrapped);
 }
 
 } // namespace smt_jit

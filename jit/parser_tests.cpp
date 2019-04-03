@@ -245,3 +245,23 @@ TEST_CASE("Test two_arrays") {
   CHECK(array1.element_width == 32);
   CHECK(array1.is_bitvector);
 }
+
+TEST_CASE("Test single_assert") {
+  std::string txt = R"(
+    (assert (=  (_ bv115 8) (select  arg00 (_ bv5 32) ) ) )
+  )";
+
+  std::istringstream iss(txt);
+  smt_jit::SmtLibParser parser(iss);
+  CHECK(parser.numAssignments() == 0);
+  CHECK(parser.numAssertions() == 1);
+  CHECK(parser.numArrays() == 0);
+
+  auto assertions = parser.assertions();
+  CHECK(assertions.size() == 1);
+  sexpresso::Sexp &a0 = assertions.front();
+  CHECK(a0.isSexp());
+  CHECK(a0.childCount() == 2);
+  CHECK(a0.getHead().isString());
+  CHECK(a0.getHead().getString() == "assert");
+}

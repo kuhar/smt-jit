@@ -26,8 +26,6 @@
 #include "llvm/Transforms/IPO.h"
 
 #include "bvlib/bvlib.h"
-
-#define SEXPRESSO_OPT_OUT_PIKESTYLE
 #include "sexpresso.hpp"
 
 #include <cstdio>
