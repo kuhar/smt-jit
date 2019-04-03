@@ -9,7 +9,6 @@
 
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
@@ -32,14 +31,14 @@
 #include "bvlib/bvlib.h"
 #include "sexpresso.hpp"
 #include "smtlib_parser.hpp"
+#include "smtlib_to_llvm.hpp"
 
 #include <cstdio>
 
 using namespace llvm;
 
-static cl::list<std::string>
-    InputFilenames(cl::Positional, cl::OneOrMore,
-                   cl::desc("<input smtlib2 files>"));
+static cl::list<std::string> InputFilenames(cl::Positional, cl::OneOrMore,
+                                            cl::desc("<input smtlib2 files>"));
 
 class SmtJit {
 private:
@@ -96,41 +95,6 @@ public:
 };
 
 void dummyFun() {}
-
-std::string emitSmtFormula(smt_jit::SmtLibParser &parser, llvm::Module &M) {
-  static unsigned cnt = 0;
-  std::string name = "smt_" + std::to_string(cnt++);
-
-  LLVMContext &ctx = M.getContext();
-
-  Type *bvTy = M.getTypeByName("struct.bitvector_t");
-  assert(bvTy);
-  Type *bvArrayTy = M.getTypeByName("struct.bv_array_t");
-  assert(bvArrayTy);
-
-  Function *bvPrintFn = M.getFunction("bv_print");
-  assert(bvPrintFn);
-  Function *bvaPrintFn = M.getFunction("bva_print");
-  assert(bvaPrintFn);
-
-  Type *returnTy = Type::getInt32Ty(ctx);
-  Type *inputArrayTy = Type::getInt64PtrTy(ctx);
-  Type *inputWidthTy = Type::getInt32Ty(ctx);
-  auto *funcTy =
-      FunctionType::get(returnTy, {inputWidthTy, inputArrayTy}, false);
-  Function *func =
-      Function::Create(funcTy, GlobalValue::ExternalLinkage, name, M);
-  BasicBlock *entry = BasicBlock::Create(ctx, "entry", func);
-
-  IRBuilder<> builder(entry);
-  Value *i64One = ConstantInt::get(Type::getInt64Ty(ctx), 1, false);
-  Instruction *callInst = builder.CreateCall(bvPrintFn, {i64One, i64One});
-  Instruction *ret = builder.CreateRet(ConstantInt::get(returnTy, 34, false));
-
-  func->dump();
-
-  return name;
-}
 
 bool doBVLibSanityCheck(SmtJit &jit) {
   auto errLookup = jit.lookup("bv_print");
@@ -227,8 +191,8 @@ int main(int argc, char **argv) {
     emitSmtFormula(parser, *freshModule);
     auto addSmtModule = jit->addModule(std::move(freshModule));
     if (addSmtModule) {
-      llvm::errs() << "Could not add a new smt module: "
-                   << errAddModule << "\n";
+      llvm::errs() << "Could not add a new smt module: " << errAddModule
+                   << "\n";
       return 2;
     }
 

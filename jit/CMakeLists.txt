@@ -62,6 +62,7 @@ set(LLVM_LINK_COMPONENTS
 set(SMTJIT_SOURCES
   bvlib_cloner.cpp
   smtlib_parser.cpp
+  smtlib_to_llvm.cpp
 )
 
 add_executable(smt-jit smt-jit.cpp

@@ -56,7 +56,7 @@ class SmtLibParser {
 
 public:
   SmtLibParser(llvm::StringRef fileName);
-  SmtLibParser(std::istream& iss);
+  SmtLibParser(std::istream &iss);
 
   llvm::ArrayRef<Assignment> assignments() const { return m_assignments; }
   llvm::ArrayRef<ArrayInfo> arrays() const { return m_arrays; }
@@ -64,11 +64,11 @@ public:
   llvm::ArrayRef<sexpresso::Sexp> assertions() const { return m_assertions; }
 
   size_t numAssignments() const { return m_assignments.size(); }
-  size_t numArrays() const {return m_arrays.size(); }
+  size_t numArrays() const { return m_arrays.size(); }
   size_t numAssertions() const { return m_assertions.size(); }
 
 private:
-  void init(std::istream& iss);
+  void init(std::istream &iss);
   void parseAssignment(const std::string &line);
   void parseArrayDecl(const std::string &line);
   void parseAssertion(const std::string &line);
