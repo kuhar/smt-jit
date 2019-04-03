@@ -60,6 +60,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 set(SMTJIT_SOURCES
+  bvlib_cloner.cpp
   smtlib_parser.cpp
 )
 

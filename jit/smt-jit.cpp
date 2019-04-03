@@ -6,12 +6,14 @@
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "llvm/IR/DataLayout.h"
 
 #include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -25,8 +27,11 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO.h"
 
+#include "bvlib_cloner.hpp"
+
 #include "bvlib/bvlib.h"
 #include "sexpresso.hpp"
+#include "smtlib_parser.hpp"
 
 #include <cstdio>
 
@@ -92,6 +97,62 @@ public:
 
 void dummyFun() {}
 
+std::string emitSmtFormula(smt_jit::SmtLibParser &parser, llvm::Module &M) {
+  static unsigned cnt = 0;
+  std::string name = "smt_" + std::to_string(cnt++);
+
+  LLVMContext &ctx = M.getContext();
+
+  Type *bvTy = M.getTypeByName("struct.bitvector_t");
+  assert(bvTy);
+  Type *bvArrayTy = M.getTypeByName("struct.bv_array_t");
+  assert(bvArrayTy);
+
+  Function *bvPrintFn = M.getFunction("bv_print");
+  assert(bvPrintFn);
+  Function *bvaPrintFn = M.getFunction("bva_print");
+  assert(bvaPrintFn);
+
+  Type *returnTy = Type::getInt32Ty(ctx);
+  Type *inputArrayTy = Type::getInt64PtrTy(ctx);
+  Type *inputWidthTy = Type::getInt32Ty(ctx);
+  auto *funcTy =
+      FunctionType::get(returnTy, {inputWidthTy, inputArrayTy}, false);
+  Function *func =
+      Function::Create(funcTy, GlobalValue::ExternalLinkage, name, M);
+  BasicBlock *entry = BasicBlock::Create(ctx, "entry", func);
+
+  IRBuilder<> builder(entry);
+  Value *i64One = ConstantInt::get(Type::getInt64Ty(ctx), 1, false);
+  Instruction *callInst = builder.CreateCall(bvPrintFn, {i64One, i64One});
+  Instruction *ret = builder.CreateRet(ConstantInt::get(returnTy, 34, false));
+
+  func->dump();
+
+  return name;
+}
+
+bool doBVLibSanityCheck(SmtJit &jit) {
+  auto errLookup = jit.lookup("bv_print");
+  if (!errLookup) {
+    llvm::errs() << "Lookup failed: " << errLookup.takeError() << "\n";
+    return false;
+  }
+
+  static bv_word cnt = 0;
+  ++cnt;
+
+  llvm::outs() << "[Startup-sanity-check] About to print bv_mk(8, " << cnt
+               << "):\n\t";
+  auto *bv_printPtr = (void (*)(bitvector))errLookup->getAddress();
+  llvm::outs().flush();
+
+  const bitvector test_bv = bv_mk(8, cnt);
+  bv_printPtr(test_bv);
+  puts("");
+  return true;
+}
+
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;
   llvm::cl::ParseCommandLineOptions(argc, argv, "SMT JIT");
@@ -130,25 +191,19 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  std::unique_ptr<Module> bvlibDeclsTemplate =
+      smt_jit::CloneDeclarationsAndPrepare(*m);
+  if (!bvlibDeclsTemplate) {
+    llvm::errs() << "Failed to create module template for jitted formulas!\n";
+    return 2;
+  }
+  bvlibDeclsTemplate->dump();
+
   auto errAddModule = jit->addModule(std::move(m));
   if (errAddModule) {
     llvm::errs() << "Could not load module: " << errAddModule << "\n";
     return 2;
   }
-
-  auto errLookup = jit->lookup("bv_print");
-  if (!errLookup) {
-    llvm::errs() << "Lookup failed: " << errLookup.takeError() << "\n";
-    return 2;
-  }
-
-  llvm::outs() << "[Startup-sanity-check] About to print bv_mk(8, 42):\n\t";
-  auto *bv_printPtr = (void (*)(bitvector))errLookup->getAddress();
-  llvm::outs() << "\n";
-  llvm::outs().flush();
-
-  const bitvector test_bv = bv_mk(8, 42);
-  bv_printPtr(test_bv);
 
   llvm::outs() << "\nInput files: \n";
   for (const std::string &filename : InputFilenames) {
@@ -158,6 +213,28 @@ int main(int argc, char **argv) {
       llvm::outs().flush();
       llvm::errs() << "\nFile " << filename << " does not exits!\n";
       return 1;
+    }
+  }
+
+  for (const std::string &filename : InputFilenames) {
+    llvm::outs() << "Executing: " << filename << "\n";
+    smt_jit::SmtLibParser parser(filename);
+
+    std::unique_ptr<llvm::Module> freshModule =
+        smt_jit::CloneBVLibTemplate(*bvlibDeclsTemplate);
+    assert(freshModule);
+
+    emitSmtFormula(parser, *freshModule);
+    auto addSmtModule = jit->addModule(std::move(freshModule));
+    if (addSmtModule) {
+      llvm::errs() << "Could not add a new smt module: "
+                   << errAddModule << "\n";
+      return 2;
+    }
+
+    if (!doBVLibSanityCheck(*jit)) {
+      llvm::errs() << "Sanity check failed, aborting.\n";
+      return 2;
     }
   }
 
