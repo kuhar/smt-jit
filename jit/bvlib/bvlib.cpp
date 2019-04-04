@@ -256,12 +256,12 @@ bitvector bv_sext(bitvector n, bv_width width) {
 }
 
 bv_array *bva_mk(bv_width width, bv_width len) {
-  bv_width wordsToAlloc = len + 2;
+  bv_width wordsToAlloc = len + 4;
   char *bytes = BVContext::get().alloc_words(wordsToAlloc);
   bv_array *arr = (bv_array *)bytes;
   arr->len = len;
 
-  for (bv_width i = 0; i != len; ++i)
+  for (bv_width i = 0; i != len + 1; ++i)
     arr->values[i].width = width;
 
   return arr;
@@ -270,7 +270,7 @@ bv_array *bva_mk(bv_width width, bv_width len) {
 bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants) {
   BVLIB_ASSERT(constants);
 
-  bv_width wordsToAlloc = len + 2;
+  bv_width wordsToAlloc = len + 4;
   char *bytes = BVContext::get().alloc_words(wordsToAlloc);
   bv_array *arr = (bv_array *)bytes;
   arr->len = len;
@@ -281,6 +281,8 @@ bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants) {
     else
       arr->values[i].width = width;
   }
+
+  arr->values[len] = bv_zero();
 
   return arr;
 }
@@ -293,10 +295,9 @@ bitvector bva_select(bv_array *arr, bitvector n) {
   BVLIB_ASSERT(n.occupied_width < BVWordBits);
 
   bv_word i = n.bits.data;
-  if (i >= arr->len)
-    return bv_zero();
+  bv_word idx = min(i, arr->len);
 
-  return arr->values[i];
+  return arr->values[idx];
 }
 
 void bv_fprint(void *file, bitvector v) {
