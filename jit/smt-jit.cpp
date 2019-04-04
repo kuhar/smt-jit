@@ -180,6 +180,18 @@ int main(int argc, char **argv) {
     }
   }
 
+  auto lookupFunctionOrNone =
+      [&jit](StringRef name) -> llvm::Optional<JITTargetAddress> {
+    auto errLookup = jit->lookup(name);
+    if (!errLookup) {
+      llvm::errs() << "Lookup of the function " << name
+                   << " failed: " << errLookup.takeError() << "\n";
+      return llvm::None;
+    }
+
+    return errLookup->getAddress();
+  };
+
   for (const std::string &filename : InputFilenames) {
     llvm::outs() << "Executing: " << filename << "\n";
     smt_jit::SmtLibParser parser(filename);
@@ -188,7 +200,7 @@ int main(int argc, char **argv) {
         smt_jit::CloneBVLibTemplate(*bvlibDeclsTemplate);
     assert(freshModule);
 
-    emitSmtFormula(parser, *freshModule);
+    std::string smtFunctionName = emitSmtFormula(parser, *freshModule);
     auto addSmtModule = jit->addModule(std::move(freshModule));
     if (addSmtModule) {
       llvm::errs() << "Could not add a new smt module: " << errAddModule
@@ -200,6 +212,65 @@ int main(int argc, char **argv) {
       llvm::errs() << "Sanity check failed, aborting.\n";
       return 2;
     }
+
+    auto smtFnAddr = lookupFunctionOrNone(smtFunctionName);
+    if (!smtFnAddr.hasValue())
+      return 2;
+
+    auto *smtFunctionPtr = (int (*)(bv_array **))smtFnAddr.getValue();
+    llvm::outs().flush();
+
+    bv_init_context();
+
+    const unsigned numArrays = parser.numArrays();
+
+    {
+      size_t assignmentIdx = 0;
+      for (smt_jit::Assignment &assignment : parser.assignments()) {
+        const size_t currentAssignmentIdx = assignmentIdx;
+        ++assignmentIdx;
+        llvm::outs() << "Assignment " << currentAssignmentIdx << ": ";
+
+        if (assignment.numVariables() != numArrays) {
+          llvm::outs() << "wrong number of variables ("
+                       << assignment.numVariables() << " vs. " << numArrays
+                       << ")\n";
+          continue;
+        }
+
+        SmallVector<bv_array *, 4> varToArray;
+        varToArray.reserve(numArrays);
+
+        bool OK = true;
+        for (const smt_jit::ArrayInfo &ai : parser.arrays()) {
+          using AssignmentVector = smt_jit::Assignment::AssignmentVector;
+
+          if (!assignment.hasVariable(ai.name)) {
+            llvm::outs() << "missing valuation for " << ai.name << "\n";
+            OK = false;
+            break;
+          }
+
+          AssignmentVector &arr = assignment.getValue(ai.name);
+          bv_array *bv_arr =
+              bva_mk_init(ai.element_width, arr.size(), arr.data());
+          varToArray.push_back(bv_arr);
+        }
+
+        if (!OK)
+          continue;
+
+        assert(varToArray.size() == numArrays);
+        int res = smtFunctionPtr(varToArray.data());
+
+        if (res == 0)
+          llvm::outs() << "models\n";
+        else
+          llvm::outs() << "assertion " << res << " failed\n";
+      }
+    }
+
+    bv_teardown_context();
   }
 
   return 0;

@@ -38,6 +38,12 @@ public:
     return it->second;
   }
 
+  AssignmentVector &getValue(llvm::StringRef varName) {
+    auto it = m_variables.find(varName);
+    assert(it != m_variables.end() && "Wrong variable name?");
+    return it->second;
+  }
+
   size_t numVariables() const { return m_variables.size(); }
 
   void dump(llvm::raw_ostream &os = llvm::errs()) const;
@@ -59,7 +65,10 @@ public:
   SmtLibParser(std::istream &iss);
 
   llvm::ArrayRef<Assignment> assignments() const { return m_assignments; }
+  llvm::MutableArrayRef<Assignment> assignments() { return m_assignments; }
+
   llvm::ArrayRef<ArrayInfo> arrays() const { return m_arrays; }
+
   llvm::MutableArrayRef<sexpresso::Sexp> assertions() { return m_assertions; }
   llvm::ArrayRef<sexpresso::Sexp> assertions() const { return m_assertions; }
 

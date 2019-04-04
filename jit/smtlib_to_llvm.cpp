@@ -21,6 +21,8 @@
 #include <cassert>
 #include <memory>
 
+#define DEBUG_TYPE "smt2llvm"
+
 using namespace llvm;
 using namespace sexpresso;
 
@@ -125,22 +127,37 @@ Smt2LLVM::Smt2LLVM(SmtLibParser &parser, llvm::Module &M)
 }
 
 void Smt2LLVM::emitFormula(Twine funName) {
-  auto funcArraysPair = emitFunctionOverBVArrays(funName);
-  Function *func = funcArraysPair.first;
-  StringMap<Argument *> &arrayToArg = funcArraysPair.second;
+  auto *funcTy = FunctionType::get(m_i32Ty, m_bvaPtrTy->getPointerTo(0), false);
 
-  SmallVector<Value *, 4> args;
-  args.reserve(func->arg_size());
-  for (auto &arg : func->args())
-    args.push_back(&arg);
+  Function *func =
+      Function::Create(funcTy, GlobalValue::ExternalLinkage, funName, m_module);
+  Argument *arrPack = &*func->arg_begin();
+  arrPack->setName("arrays");
 
+  BasicBlock::Create(m_ctx, "entry", func);
   IRBuilder<> formulaBuilder(&func->front());
+
+  const size_t numArrays = m_parser.numArrays();
+  SmallVector<Value *, 4> args;
+  args.reserve(numArrays);
+  {
+    size_t i = 0;
+    for (const ArrayInfo &ai : m_parser.arrays()) {
+      Value *arr = formulaBuilder.CreateInBoundsGEP(
+          arrPack, ConstantInt::get(m_i64Ty, i), {ai.name, ".ptr"});
+      Value *arg = formulaBuilder.CreateLoad(arr, ai.name);
+      args.push_back(arg);
+      ++i;
+    }
+  }
 
   const size_t numAssertions = m_parser.numAssertions();
   for (size_t i = 0; i != numAssertions; ++i) {
     const std::string caseName = std::to_string(i + 1);
     Function *assertFn = lowerAssert(i, funName + "_assert");
-    assertFn->dump();
+
+    LLVM_DEBUG(assertFn->dump());
+
     Value *res =
         formulaBuilder.CreateCall(assertFn, args, Twine{"assert.", caseName});
     Value *failureRes = formulaBuilder.CreateICmpEQ(
@@ -158,7 +175,8 @@ void Smt2LLVM::emitFormula(Twine funName) {
   }
 
   formulaBuilder.CreateRet(m_i32Zero);
-  func->dump();
+
+  LLVM_DEBUG(func->dump());
 }
 
 bool IsIntegerConstant(StringRef val) {
@@ -211,18 +229,20 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
     return valueStack.pop_back_val();
   };
 
-  for (SexpPostOrderView view : SexpPostOrderRange(assertion))
-    llvm::errs() << view << "\n";
+  LLVM_DEBUG(for (SexpPostOrderView view
+                  : SexpPostOrderRange(assertion)) llvm::errs()
+             << view << "\n");
 
   StringMap<Value *> letToVal;
 
   for (SexpPostOrderView view : SexpPostOrderRange(assertion)) {
-    llvm::errs() << view << "\n";
+    LLVM_DEBUG(llvm::errs() << view << "\n");
 
     assert(view.sexp);
     assert(view.sexp->isString());
     StringRef str = view.sexp->getString();
-    errs() << "str: " << str << "\n";
+
+    LLVM_DEBUG(errs() << "str: " << str << "\n");
 
     assert(view.parent);
     Sexp &parent = *view.parent;
@@ -262,6 +282,7 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
         continue;
       }
 
+      llvm::errs() << "Operand \"" << str << "\" not handled!\n";
       llvm_unreachable("Unknown symbol");
     } else {
       if (str == "_") {
@@ -303,6 +324,8 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
         break;
       }
 
+      llvm::errs() << "Head \"" << str << "\" not handled!\n";
+      llvm_unreachable("Symbol not handled");
     }
   }
 

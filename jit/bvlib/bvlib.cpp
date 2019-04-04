@@ -293,7 +293,8 @@ bitvector bva_select(bv_array *arr, bitvector n) {
   BVLIB_ASSERT(n.occupied_width < BVWordBits);
 
   bv_word i = n.bits.data;
-  BVLIB_ASSERT(i < arr->len);
+  if (i >= arr->len)
+    return bv_zero();
 
   return arr->values[i];
 }
