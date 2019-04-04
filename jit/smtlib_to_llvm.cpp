@@ -34,6 +34,7 @@ class Smt2LLVM {
   std::unique_ptr<IRBuilder<>> m_builder = nullptr;
 
   StructType *m_bitvectorTy = nullptr;
+  StructType *m_i64PairTy = nullptr;
   StructType *m_bvaTy = nullptr;
   PointerType *m_bvaPtrTy = nullptr;
 
@@ -48,6 +49,8 @@ class Smt2LLVM {
   Function *m_bvaPrintFn = nullptr;
 
   Function *m_bvMkFn = nullptr;
+  Function *m_bvEqFn = nullptr;
+
   Function *m_bvaSelectFn = nullptr;
 
 public:
@@ -56,9 +59,16 @@ public:
   void emitFormula(Twine funName);
 
 private:
-  Function *lowerAssert(unsigned idx);
-  Value *lowerCmp(Value *lhs, Value *rhs);
-  Value *lowerSelect(Value *array, Value *index);
+  std::pair<Function *, StringMap<Argument *>>
+      emitFunctionOverBVArrays(Twine name);
+
+  Function *lowerAssert(unsigned idx, Twine name);
+  Value *lowerIntegerConstant(long long val);
+  std::pair<Value *, Value *> unpackI64Pair(Value *valPair);
+  Value *lowerBVMk(Value *constant, Value *width, Twine name = "bv");
+  Value *lowerCmp(Value *lhs, Value *rhs, Twine name = "cmp");
+  Value *lowerEq(Value *lhs, Value *rhs, Twine name = "eq");
+  Value *lowerSelect(Value *array, Value *index, Twine name = "select");
 };
 } // namespace
 
@@ -89,6 +99,8 @@ Smt2LLVM::Smt2LLVM(SmtLibParser &parser, llvm::Module &M)
   assert(m_i64Ty);
   m_i64PtrTy = m_i64Ty->getPointerTo(0);
 
+  m_i64PairTy = StructType::get(m_ctx, {m_i64Ty, m_i64Ty}, false);
+
   m_i32Zero = ConstantInt::get(m_i32Ty, 0, false);
   assert(m_i32Zero);
   m_i32One = ConstantInt::get(m_i32Ty, 1, false);
@@ -101,46 +113,231 @@ Smt2LLVM::Smt2LLVM(SmtLibParser &parser, llvm::Module &M)
 
   m_bvMkFn = m_module.getFunction("bv_mk");
   assert(m_bvMkFn);
+  assert(m_bvMkFn->getReturnType() == m_i64PairTy);
+
+  m_bvEqFn = m_module.getFunction("bv_eq");
+  assert(m_bvEqFn);
+  assert(m_bvEqFn->getReturnType() == m_i32Ty);
+  assert(m_bvEqFn->arg_size() == 4);
 
   m_bvaSelectFn = m_module.getFunction("bva_select");
   assert(m_bvaSelectFn);
 }
 
 void Smt2LLVM::emitFormula(Twine funName) {
-  Function *assertion = lowerAssert(0);
-  assertion->setName(funName);
-  assertion->dump();
+  auto funcArraysPair = emitFunctionOverBVArrays(funName);
+  Function *func = funcArraysPair.first;
+  StringMap<Argument *> &arrayToArg = funcArraysPair.second;
+
+  SmallVector<Value *, 4> args;
+  args.reserve(func->arg_size());
+  for (auto &arg : func->args())
+    args.push_back(&arg);
+
+  IRBuilder<> formulaBuilder(&func->front());
+
+  const size_t numAssertions = m_parser.numAssertions();
+  for (size_t i = 0; i != numAssertions; ++i) {
+    const std::string caseName = std::to_string(i + 1);
+    Function *assertFn = lowerAssert(i, funName + "_assert");
+    assertFn->dump();
+    Value *res =
+        formulaBuilder.CreateCall(assertFn, args, Twine{"assert.", caseName});
+    Value *failureRes = formulaBuilder.CreateICmpEQ(
+        res, m_i32One, {res->getName(), ".success"});
+
+    auto *blockSuccess = BasicBlock::Create(m_ctx, "cont", func);
+    auto *blockFail =
+        BasicBlock::Create(m_ctx, {"fail_", caseName}, func, blockSuccess);
+    formulaBuilder.CreateCondBr(failureRes, blockSuccess, blockFail);
+
+    formulaBuilder.SetInsertPoint(blockFail);
+    formulaBuilder.CreateRet(ConstantInt::get(m_i32Ty, i + 1, false));
+
+    formulaBuilder.SetInsertPoint(blockSuccess);
+  }
+
+  formulaBuilder.CreateRet(m_i32Zero);
+  func->dump();
 }
 
-Function *Smt2LLVM::lowerAssert(unsigned idx) {
-  assert(idx < m_parser.numAssertions());
-  Sexp &assertion = m_parser.assertions()[idx];
-  std::string name = "assert_" + std::to_string(idx);
+bool IsIntegerConstant(StringRef val) {
+  return !val.empty() && std::all_of(val.begin(), val.end(), ::isdigit);
+}
 
-  auto *funcTy = FunctionType::get(m_i32Ty, {m_bvaPtrTy}, false);
+std::pair<Function *, StringMap<Argument *>>
+Smt2LLVM::emitFunctionOverBVArrays(Twine name) {
+  const size_t numArrays = m_parser.numArrays();
+  SmallVector<Type *, 4> arrayTyInputs(numArrays);
+  for (auto &x : arrayTyInputs)
+    x = m_bvaPtrTy;
+
+  auto *funcTy = FunctionType::get(m_i32Ty, arrayTyInputs, false);
   Function *func =
       Function::Create(funcTy, GlobalValue::ExternalLinkage, name, m_module);
 
-  BasicBlock *entry = BasicBlock::Create(m_ctx, "entry", func);
-  m_builder = llvm::make_unique<IRBuilder<>>(entry);
+  BasicBlock::Create(m_ctx, "entry", func);
 
-  m_builder->CreateRet(m_i32Zero);
-  m_builder.release();
+  assert(m_parser.numArrays() == func->arg_size());
+  auto argIt = func->arg_begin();
+  const auto argEnd = func->arg_end();
+
+  StringMap<Argument *> arrayToArg;
+  for (const ArrayInfo &ai : m_parser.arrays()) {
+    assert(argIt != argEnd);
+    argIt->setName(ai.name);
+    arrayToArg[ai.name] = &*argIt;
+    ++argIt;
+  }
+
+  return {func, std::move(arrayToArg)};
+}
+
+Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
+  assert(idx < m_parser.numAssertions());
+  Sexp &assertion = m_parser.assertions()[idx];
+
+  auto funcArraysPair =
+      emitFunctionOverBVArrays(name + "_" + std::to_string(idx + 1));
+  Function *func = funcArraysPair.first;
+  StringMap<Argument *> &arrayToArg = funcArraysPair.second;
+
+  m_builder = llvm::make_unique<IRBuilder<>>(&func->front());
+
+  SmallVector<Value *, 4> valueStack;
+  auto stackPush = [&valueStack](Value *val) { valueStack.push_back(val); };
+  auto stackPop = [&valueStack] {
+    assert(!valueStack.empty());
+    return valueStack.pop_back_val();
+  };
+
+  StringMap<Value *> letToVal;
+
+  for (SexpPostOrderView view : SexpPostOrderRange(assertion)) {
+    llvm::errs() << view << "\n";
+
+    assert(view.sexp);
+    assert(view.sexp->isString());
+    StringRef str = view.sexp->getString();
+
+    assert(view.parent);
+    Sexp &parent = *view.parent;
+
+    if (!view.isHead()) {
+      if (view.sexp->isNumber()) {
+        const auto num = view.sexp->toNumber();
+        stackPush(lowerIntegerConstant(num));
+        continue;
+      }
+
+      if (str == "false") {
+        stackPush(m_i32Zero);
+        continue;
+      }
+
+      if (str.startswith("bv")) {
+        StringRef remainder = str.substr(2);
+        assert(IsIntegerConstant(remainder));
+        const long long num = std::stoll(remainder.str());
+        stackPush(lowerIntegerConstant(num));
+        continue;
+      }
+
+      if (arrayToArg.count(str) > 0) {
+        stackPush(arrayToArg[str]);
+        continue;
+      }
+
+      if (letToVal.count(str) > 0) {
+        stackPush(letToVal[str]);
+        continue;
+      }
+
+      llvm_unreachable("Unknown symbol");
+    } else {
+      if (str == "_") {
+        Value *constant = stackPop();
+        Value *width = stackPop();
+
+        stackPush(lowerBVMk(constant, width, parent.getChild(1).getString()));
+        continue;
+      }
+
+      if (str == "select") {
+        Value *arr = stackPop();
+        Value *index = stackPop();
+        stackPush(lowerSelect(arr, index));
+        continue;
+      }
+
+      if (str == "=") {
+        Value *lhs = stackPop();
+        Value *rhs = stackPop();
+        stackPush(lowerCmp(lhs, rhs));
+        continue;
+      }
+
+      if (str == "assert") {
+        Value *res = stackPop();
+        m_builder->CreateRet(res);
+        break;
+      }
+
+    }
+  }
+
+  m_builder = nullptr;
 
   return func;
 }
 
-Value *Smt2LLVM::lowerCmp(Value *lhs, Value *rhs) {
-  assert(lhs);
-  assert(rhs);
-  assert(m_builder);
-
-  Value *cmp = m_builder->CreateICmpEQ(lhs, rhs);
-  Value *zext = m_builder->CreateZExt(cmp, m_i32Ty);
-  return zext;
+Value *Smt2LLVM::lowerIntegerConstant(long long val) {
+  return ConstantInt::get(m_i64Ty, val, val < 0);
 }
 
-Value *Smt2LLVM::lowerSelect(Value *array, Value *index) { return nullptr; }
+std::pair<Value *, Value *> Smt2LLVM::unpackI64Pair(Value *valPair) {
+  assert(valPair->getType() == m_i64PairTy);
+  Twine prefix = valPair->hasName() ? valPair->getName() : "";
+  Value *first = m_builder->CreateExtractValue(valPair, {0}, prefix + ".fi");
+  Value *second = m_builder->CreateExtractValue(valPair, {1}, prefix + ".se");
+
+  return {first, second};
+}
+
+Value *Smt2LLVM::lowerBVMk(Value *constant, Value *width, Twine name) {
+  Value *c = m_builder->CreateSExtOrTrunc(constant, m_i64Ty);
+  Value *w = m_builder->CreateZExtOrTrunc(width, m_i32Ty);
+  return m_builder->CreateCall(m_bvMkFn, {w, c}, name);
+}
+
+Value *Smt2LLVM::lowerCmp(Value *lhs, Value *rhs, Twine name) {
+  assert(lhs->getType() == rhs->getType());
+
+  if (!lhs->getType()->isIntegerTy())
+    return lowerEq(lhs, rhs);
+
+  Value *cmp = m_builder->CreateICmpEQ(lhs, rhs, name);
+  return m_builder->CreateZExt(cmp, m_i32Ty);
+}
+
+Value *Smt2LLVM::lowerEq(Value *lhs, Value *rhs, Twine name) {
+  assert(lhs->getType() == m_i64PairTy);
+  assert(rhs->getType() == m_i64PairTy);
+  auto lhsUnpacked = unpackI64Pair(lhs);
+  auto rhsUnpacked = unpackI64Pair(rhs);
+  return m_builder->CreateCall(m_bvEqFn,
+                               {lhsUnpacked.first, lhsUnpacked.second,
+                                rhsUnpacked.first, rhsUnpacked.second},
+                               name);
+}
+
+Value *Smt2LLVM::lowerSelect(Value *array, Value *index, Twine name) {
+  assert(array->getType() == m_bvaPtrTy);
+  assert(index->getType() == m_i64PairTy);
+  auto firstSecond = unpackI64Pair(index);
+  return m_builder->CreateCall(
+      m_bvaSelectFn, {array, firstSecond.first, firstSecond.second}, name);
+}
 
 } // namespace
 } // namespace smt_jit
