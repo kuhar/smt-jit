@@ -211,6 +211,9 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
     return valueStack.pop_back_val();
   };
 
+  for (SexpPostOrderView view : SexpPostOrderRange(assertion))
+    llvm::errs() << view << "\n";
+
   StringMap<Value *> letToVal;
 
   for (SexpPostOrderView view : SexpPostOrderRange(assertion)) {
@@ -219,6 +222,7 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
     assert(view.sexp);
     assert(view.sexp->isString());
     StringRef str = view.sexp->getString();
+    errs() << "str: " << str << "\n";
 
     assert(view.parent);
     Sexp &parent = *view.parent;
@@ -243,6 +247,11 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
         continue;
       }
 
+      if (letToVal.count(str)) {
+        stackPush(letToVal[str]);
+        continue;
+      }
+
       if (arrayToArg.count(str) > 0) {
         stackPush(arrayToArg[str]);
         continue;
@@ -256,23 +265,34 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
       llvm_unreachable("Unknown symbol");
     } else {
       if (str == "_") {
-        Value *constant = stackPop();
         Value *width = stackPop();
-
+        Value *constant = stackPop();
         stackPush(lowerBVMk(constant, width, parent.getChild(1).getString()));
         continue;
       }
 
+      // Let definition.
+      if (str.startswith(R"(\?)")) {
+        letToVal[str] = stackPop();
+        continue;
+      }
+
+      if (str == "let") {
+        // The value of let is it's second operand. Leave it on the stack.
+        // Same as: stackPush(stackPop());
+        continue;
+      }
+
       if (str == "select") {
-        Value *arr = stackPop();
         Value *index = stackPop();
+        Value *arr = stackPop();
         stackPush(lowerSelect(arr, index));
         continue;
       }
 
       if (str == "=") {
-        Value *lhs = stackPop();
         Value *rhs = stackPop();
+        Value *lhs = stackPop();
         stackPush(lowerCmp(lhs, rhs));
         continue;
       }
