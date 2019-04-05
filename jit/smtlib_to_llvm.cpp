@@ -51,7 +51,16 @@ class Smt2LLVM {
   Function *m_bvaPrintFn = nullptr;
 
   Function *m_bvMkFn = nullptr;
+  Function *m_bvAddFn = nullptr;
+  Function *m_bvMulFn = nullptr;
+  Function *m_bvAndFn = nullptr;
+  Function *m_bvOrFn = nullptr;
+  Function *m_bvConcatFn = nullptr;
+
   Function *m_bvEqFn = nullptr;
+  Function *m_bvULTFn = nullptr;
+  Function *m_bvSLTFn = nullptr;
+
   Function *m_bvExtractFn = nullptr;
   Function *m_bvZExtFn = nullptr;
   Function *m_bvSExtFn = nullptr;
@@ -73,7 +82,11 @@ private:
   Value *lowerBVMk(Value *constant, Value *width, Twine name = "bv");
   Value *lowerCmp(Value *lhs, Value *rhs, Twine name = "cmp");
   Value *lowerAnd(Value *lhs, Value *rhs, Twine name = "and");
+  Value *lowerBvBinaryFn(Value *lhs, Value *rhs, Function *op,
+                         Twine name = "binop");
   Value *lowerEq(Value *lhs, Value *rhs, Twine name = "eq");
+  Value *lowerLessThan(Value *lhs, Value *rhs, bool isSigned,
+                       Twine name = "lt");
   Value *lowerExtract(Value *bv, Value *from, Value *to, Twine name = "extr");
   Value *lowerZExt(Value *val, Value *width, Twine name = "zext");
   Value *lowerSExt(Value *val, Value *width, Twine name = "sext");
@@ -124,10 +137,35 @@ Smt2LLVM::Smt2LLVM(SmtLibParser &parser, llvm::Module &M)
   assert(m_bvMkFn);
   assert(m_bvMkFn->getReturnType() == m_i64PairTy);
 
+  m_bvAddFn = m_module.getFunction("bv_add");
+  assert(m_bvAddFn);
+  assert(m_bvAddFn->arg_size() == 4);
+  m_bvMulFn = m_module.getFunction("bv_mul");
+  assert(m_bvMulFn);
+  assert(m_bvMulFn->arg_size() == 4);
+  m_bvAndFn = m_module.getFunction("bv_and");
+  assert(m_bvAndFn);
+  assert(m_bvAndFn->arg_size() == 4);
+  m_bvOrFn = m_module.getFunction("bv_or");
+  assert(m_bvOrFn);
+  assert(m_bvOrFn->arg_size() == 4);
+  m_bvConcatFn = m_module.getFunction("bv_concat");
+  assert(m_bvConcatFn);
+  assert(m_bvConcatFn->arg_size() == 4);
+  assert(m_bvConcatFn->getReturnType() == m_i64PairTy);
+
   m_bvEqFn = m_module.getFunction("bv_eq");
   assert(m_bvEqFn);
   assert(m_bvEqFn->getReturnType() == m_i32Ty);
   assert(m_bvEqFn->arg_size() == 4);
+  m_bvULTFn = m_module.getFunction("bv_ult");
+  assert(m_bvULTFn);
+  assert(m_bvULTFn->getReturnType() == m_i32Ty);
+  assert(m_bvULTFn->arg_size() == 4);
+  m_bvSLTFn = m_module.getFunction("bv_slt");
+  assert(m_bvSLTFn);
+  assert(m_bvSLTFn->getReturnType() == m_i32Ty);
+  assert(m_bvSLTFn->arg_size() == 4);
 
   m_bvExtractFn = m_module.getFunction("bv_extract");
   assert(m_bvExtractFn);
@@ -362,6 +400,55 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
         continue;
       }
 
+      if (str == "bvadd") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerBvBinaryFn(lhs, rhs, m_bvAddFn, "bvadd"));
+        continue;
+      }
+
+      if (str == "bvmul") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerBvBinaryFn(lhs, rhs, m_bvMulFn, "bvmul"));
+        continue;
+      }
+
+      if (str == "bvand") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerBvBinaryFn(lhs, rhs, m_bvAndFn, "bvand"));
+        continue;
+      }
+
+      if (str == "bvult") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerLessThan(lhs, rhs, false, "ult"));
+        continue;
+      }
+
+      if (str == "bvslt") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerLessThan(lhs, rhs, true, "slt"));
+        continue;
+      }
+
+      if (str == "bvor") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerBvBinaryFn(lhs, rhs, m_bvOrFn, "bvor"));
+        continue;
+      }
+
+      if (str == "concat") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerBvBinaryFn(lhs, rhs, m_bvConcatFn, "concat"));
+        continue;
+      }
+
       if (str == "=") {
         Value *rhs = stackPop();
         Value *lhs = stackPop();
@@ -420,12 +507,37 @@ Value *Smt2LLVM::lowerAnd(Value *lhs, Value *rhs, Twine name) {
   return m_builder->CreateAnd(lhs, rhs, name);
 }
 
+Value *Smt2LLVM::lowerBvBinaryFn(Value *lhs, Value *rhs, Function *op,
+                                 Twine name) {
+  assert(lhs->getType() == rhs->getType());
+  assert(op);
+
+  auto lhsUnpacked = unpackI64Pair(lhs);
+  auto rhsUnpacked = unpackI64Pair(rhs);
+  return m_builder->CreateCall(op,
+                               {lhsUnpacked.first, lhsUnpacked.second,
+                                rhsUnpacked.first, rhsUnpacked.second},
+                               name);
+}
+
 Value *Smt2LLVM::lowerEq(Value *lhs, Value *rhs, Twine name) {
   assert(lhs->getType() == m_i64PairTy);
   assert(rhs->getType() == m_i64PairTy);
   auto lhsUnpacked = unpackI64Pair(lhs);
   auto rhsUnpacked = unpackI64Pair(rhs);
   return m_builder->CreateCall(m_bvEqFn,
+                               {lhsUnpacked.first, lhsUnpacked.second,
+                                rhsUnpacked.first, rhsUnpacked.second},
+                               name);
+}
+
+Value *Smt2LLVM::lowerLessThan(Value *lhs, Value *rhs, bool isSigned,
+                               Twine name) {
+  assert(lhs->getType() == m_i64PairTy);
+  assert(rhs->getType() == m_i64PairTy);
+  auto lhsUnpacked = unpackI64Pair(lhs);
+  auto rhsUnpacked = unpackI64Pair(rhs);
+  return m_builder->CreateCall(isSigned ? m_bvSLTFn : m_bvULTFn,
                                {lhsUnpacked.first, lhsUnpacked.second,
                                 rhsUnpacked.first, rhsUnpacked.second},
                                name);
