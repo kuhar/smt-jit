@@ -19,6 +19,8 @@ std::unique_ptr<llvm::Module> CloneDeclarationsAndPrepare(llvm::Module &M) {
       continue;
 
     // func.setName({"ir_", func.getName()});
+    if (func.getInstructionCount() <= 28 || func.getName() == "bv_mk")
+      func.addFnAttr(Attribute::AlwaysInline);
 
     func.setLinkage(GlobalValue::LinkageTypes::ExternalLinkage);
     if (func.getUnnamedAddr() == GlobalValue::UnnamedAddr::Local)

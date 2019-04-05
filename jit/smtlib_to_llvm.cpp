@@ -474,6 +474,9 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
     }
   }
 
+  if (func->getInstructionCount() <= 32)
+    func->addFnAttr(Attribute::AlwaysInline);
+
   m_builder = nullptr;
 
   return func;
