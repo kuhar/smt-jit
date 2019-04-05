@@ -247,7 +247,7 @@ int parseSmtAndEval(StringRef filename, SmtJit &jit,
                     const llvm::Module &bvLibTemplate) {
   llvm::outs() << "Evaluating: " << filename << "\n";
   const StringRef tempBasename = llvm::sys::path::filename(filename);
-  const Twine tempDest = TempDir + "/" + tempBasename;
+  const std::string tempDest = TempDir + "/" + tempBasename.str();
 
   smt_jit::SmtLibParser parser(filename);
 
@@ -267,7 +267,7 @@ int parseSmtAndEval(StringRef filename, SmtJit &jit,
   }
 
   if (SaveTemps) {
-    LastTempModulePath = tempDest.str();
+    LastTempModulePath = tempDest;
     smt_jit::SaveIRToFile(*freshModule, tempDest + ".ll");
   }
 

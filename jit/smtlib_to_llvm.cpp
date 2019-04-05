@@ -70,39 +70,40 @@ class Smt2LLVM {
 public:
   Smt2LLVM(SmtLibParser &parser, llvm::Module &M);
 
-  void emitFormula(Twine funName);
+  void emitFormula(const Twine &funName);
 
 private:
   std::pair<Function *, StringMap<Argument *>>
-      emitFunctionOverBVArrays(Twine name);
+  emitFunctionOverBVArrays(const Twine &name);
 
-  Function *lowerAssert(unsigned idx, Twine name);
+  Function *lowerAssert(unsigned idx, const Twine &name);
   Value *lowerIntegerConstant(long long val);
   std::pair<Value *, Value *> unpackI64Pair(Value *valPair);
-  Value *lowerBVMk(Value *constant, Value *width, Twine name = "bv");
-  Value *lowerCmp(Value *lhs, Value *rhs, Twine name = "cmp");
-  Value *lowerAnd(Value *lhs, Value *rhs, Twine name = "and");
+  Value *lowerBVMk(Value *constant, Value *width, const Twine &name = "bv");
+  Value *lowerCmp(Value *lhs, Value *rhs, const Twine &name = "cmp");
+  Value *lowerAnd(Value *lhs, Value *rhs, const Twine &name = "and");
   Value *lowerBvBinaryFn(Value *lhs, Value *rhs, Function *op,
-                         Twine name = "binop");
-  Value *lowerEq(Value *lhs, Value *rhs, Twine name = "eq");
+                         const Twine &name = "binop");
+  Value *lowerEq(Value *lhs, Value *rhs, const Twine &name = "eq");
   Value *lowerLessThan(Value *lhs, Value *rhs, bool isSigned,
-                       Twine name = "lt");
-  Value *lowerExtract(Value *bv, Value *from, Value *to, Twine name = "extr");
-  Value *lowerZExt(Value *val, Value *width, Twine name = "zext");
-  Value *lowerSExt(Value *val, Value *width, Twine name = "sext");
-  Value *lowerSelect(Value *array, Value *index, Twine name = "select");
+                       const Twine &name = "lt");
+  Value *lowerExtract(Value *bv, Value *from, Value *to,
+                      const Twine &name = "extr");
+  Value *lowerZExt(Value *val, Value *width, const Twine &name = "zext");
+  Value *lowerSExt(Value *val, Value *width, const Twine &name = "sext");
+  Value *lowerSelect(Value *array, Value *index, const Twine &name = "select");
 };
 } // namespace
 
 std::string emitSmtFormula(smt_jit::SmtLibParser &parser, llvm::Module &M) {
   static unsigned cnt = 0;
   std::string num = std::to_string(cnt++);
-  Twine name("smt_", num);
+  std::string name = "smt_" + num;
 
   Smt2LLVM smt2llvm(parser, M);
   smt2llvm.emitFormula(name);
 
-  return name.str();
+  return name;
 }
 
 namespace {
@@ -180,7 +181,7 @@ Smt2LLVM::Smt2LLVM(SmtLibParser &parser, llvm::Module &M)
   assert(m_bvaSelectFn);
 }
 
-void Smt2LLVM::emitFormula(Twine funName) {
+void Smt2LLVM::emitFormula(const Twine &funName) {
   auto *funcTy = FunctionType::get(m_i32Ty, m_bvaPtrTy->getPointerTo(0), false);
 
   Function *func =
@@ -216,7 +217,7 @@ void Smt2LLVM::emitFormula(Twine funName) {
     LLVM_DEBUG(assertFn->dump());
 
     Value *res =
-        formulaBuilder.CreateCall(assertFn, args, Twine{"assert.", caseName});
+        formulaBuilder.CreateCall(assertFn, args, {"assert.", caseName});
     Value *failureRes = formulaBuilder.CreateICmpEQ(
         res, m_i32One, {res->getName(), ".success"});
 
@@ -241,7 +242,7 @@ bool IsIntegerConstant(StringRef val) {
 }
 
 std::pair<Function *, StringMap<Argument *>>
-Smt2LLVM::emitFunctionOverBVArrays(Twine name) {
+Smt2LLVM::emitFunctionOverBVArrays(const Twine &name) {
   const size_t numArrays = m_parser.numArrays();
   SmallVector<Type *, 4> arrayTyInputs(numArrays);
   for (auto &x : arrayTyInputs)
@@ -274,7 +275,7 @@ Smt2LLVM::emitFunctionOverBVArrays(Twine name) {
   return {func, std::move(arrayToArg)};
 }
 
-Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
+Function *Smt2LLVM::lowerAssert(unsigned idx, const Twine &name) {
   assert(idx < m_parser.numAssertions());
   Sexp &assertion = m_parser.assertions()[idx];
 
@@ -490,20 +491,20 @@ Value *Smt2LLVM::lowerIntegerConstant(long long val) {
 
 std::pair<Value *, Value *> Smt2LLVM::unpackI64Pair(Value *valPair) {
   assert(valPair->getType() == m_i64PairTy);
-  Twine prefix = valPair->hasName() ? valPair->getName() : "";
+  StringRef prefix = valPair->hasName() ? valPair->getName() : "";
   Value *first = m_builder->CreateExtractValue(valPair, {0}, prefix + ".fi");
   Value *second = m_builder->CreateExtractValue(valPair, {1}, prefix + ".se");
 
   return {first, second};
 }
 
-Value *Smt2LLVM::lowerBVMk(Value *constant, Value *width, Twine name) {
+Value *Smt2LLVM::lowerBVMk(Value *constant, Value *width, const Twine &name) {
   Value *c = m_builder->CreateSExtOrTrunc(constant, m_i64Ty);
   Value *w = m_builder->CreateZExtOrTrunc(width, m_i32Ty);
   return m_builder->CreateCall(m_bvMkFn, {w, c}, name);
 }
 
-Value *Smt2LLVM::lowerCmp(Value *lhs, Value *rhs, Twine name) {
+Value *Smt2LLVM::lowerCmp(Value *lhs, Value *rhs, const Twine &name) {
   assert(lhs->getType() == rhs->getType());
 
   if (!lhs->getType()->isIntegerTy())
@@ -513,14 +514,14 @@ Value *Smt2LLVM::lowerCmp(Value *lhs, Value *rhs, Twine name) {
   return m_builder->CreateZExt(cmp, m_i32Ty, {cmp->getName(), ".z"});
 }
 
-Value *Smt2LLVM::lowerAnd(Value *lhs, Value *rhs, Twine name) {
+Value *Smt2LLVM::lowerAnd(Value *lhs, Value *rhs, const Twine &name) {
   assert(lhs->getType() == m_i32Ty);
   assert(rhs->getType() == m_i32Ty);
   return m_builder->CreateAnd(lhs, rhs, name);
 }
 
 Value *Smt2LLVM::lowerBvBinaryFn(Value *lhs, Value *rhs, Function *op,
-                                 Twine name) {
+                                 const Twine &name) {
   assert(lhs->getType() == rhs->getType());
   assert(op);
 
@@ -532,7 +533,7 @@ Value *Smt2LLVM::lowerBvBinaryFn(Value *lhs, Value *rhs, Function *op,
                                name);
 }
 
-Value *Smt2LLVM::lowerEq(Value *lhs, Value *rhs, Twine name) {
+Value *Smt2LLVM::lowerEq(Value *lhs, Value *rhs, const Twine &name) {
   assert(lhs->getType() == m_i64PairTy);
   assert(rhs->getType() == m_i64PairTy);
   auto lhsUnpacked = unpackI64Pair(lhs);
@@ -544,7 +545,7 @@ Value *Smt2LLVM::lowerEq(Value *lhs, Value *rhs, Twine name) {
 }
 
 Value *Smt2LLVM::lowerLessThan(Value *lhs, Value *rhs, bool isSigned,
-                               Twine name) {
+                               const Twine &name) {
   assert(lhs->getType() == m_i64PairTy);
   assert(rhs->getType() == m_i64PairTy);
   auto lhsUnpacked = unpackI64Pair(lhs);
@@ -555,7 +556,8 @@ Value *Smt2LLVM::lowerLessThan(Value *lhs, Value *rhs, bool isSigned,
                                name);
 }
 
-Value *Smt2LLVM::lowerExtract(Value *bv, Value *from, Value *to, Twine name) {
+Value *Smt2LLVM::lowerExtract(Value *bv, Value *from, Value *to,
+                              const Twine &name) {
   assert(from->getType()->isIntegerTy());
   assert(to->getType()->isIntegerTy());
   auto unpacked = unpackI64Pair(bv);
@@ -565,7 +567,7 @@ Value *Smt2LLVM::lowerExtract(Value *bv, Value *from, Value *to, Twine name) {
                                {unpacked.first, unpacked.second, f, t}, name);
 }
 
-Value *Smt2LLVM::lowerZExt(Value *val, Value *width, Twine name) {
+Value *Smt2LLVM::lowerZExt(Value *val, Value *width, const Twine &name) {
   assert(width->getType()->isIntegerTy());
   auto unpacked = unpackI64Pair(val);
   Value *w = m_builder->CreateZExtOrTrunc(width, m_i32Ty);
@@ -573,7 +575,7 @@ Value *Smt2LLVM::lowerZExt(Value *val, Value *width, Twine name) {
                                name);
 }
 
-Value *Smt2LLVM::lowerSExt(Value *val, Value *width, Twine name) {
+Value *Smt2LLVM::lowerSExt(Value *val, Value *width, const Twine &name) {
   assert(width->getType()->isIntegerTy());
   auto unpacked = unpackI64Pair(val);
   Value *w = m_builder->CreateZExtOrTrunc(width, m_i32Ty);
@@ -581,7 +583,7 @@ Value *Smt2LLVM::lowerSExt(Value *val, Value *width, Twine name) {
                                name);
 }
 
-Value *Smt2LLVM::lowerSelect(Value *array, Value *index, Twine name) {
+Value *Smt2LLVM::lowerSelect(Value *array, Value *index, const Twine &name) {
   assert(array->getType() == m_bvaPtrTy);
   assert(index->getType() == m_i64PairTy);
   auto firstSecond = unpackI64Pair(index);
