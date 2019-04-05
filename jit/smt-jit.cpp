@@ -3,6 +3,7 @@
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
 #include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -10,10 +11,12 @@
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 
 #include "llvm/IRReader/IRReader.h"
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
@@ -24,7 +27,13 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/IPO.h"
+
+#include "llvm/Analysis/CallGraphSCCPass.h"
+
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 
 #include "bvlib_cloner.hpp"
 
@@ -45,6 +54,7 @@ private:
   orc::ExecutionSession ES;
   orc::RTDyldObjectLinkingLayer ObjectLayer;
   orc::IRCompileLayer CompileLayer;
+  orc::IRTransformLayer OptimizeLayer;
 
   DataLayout DL;
   orc::MangleAndInterner Mangle;
@@ -56,8 +66,8 @@ public:
                     []() { return llvm::make_unique<SectionMemoryManager>(); }),
         CompileLayer(ES, ObjectLayer,
                      orc::ConcurrentIRCompiler(std::move(JTMB))),
-        DL(std::move(DL)), Mangle(ES, this->DL),
-        Ctx(llvm::make_unique<LLVMContext>()) {
+        OptimizeLayer(ES, CompileLayer, optimizeModule), DL(std::move(DL)),
+        Mangle(ES, this->DL), Ctx(llvm::make_unique<LLVMContext>()) {
     ES.getMainJITDylib().setGenerator(
         cantFail(orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(DL)));
   }
@@ -85,12 +95,40 @@ public:
   LLVMContext &getContext() { return *Ctx.getContext(); }
 
   Error addModule(std::unique_ptr<Module> M) {
-    return CompileLayer.add(ES.getMainJITDylib(),
-                            orc::ThreadSafeModule(std::move(M), Ctx));
+    return OptimizeLayer.add(ES.getMainJITDylib(),
+                             orc::ThreadSafeModule(std::move(M), Ctx));
   }
 
   Expected<JITEvaluatedSymbol> lookup(StringRef Name) {
     return ES.lookup({&ES.getMainJITDylib()}, Mangle(Name.str()));
+  }
+
+private:
+  static Expected<orc::ThreadSafeModule>
+  optimizeModule(orc::ThreadSafeModule TSM,
+                 const orc::MaterializationResponsibility &R) {
+    legacy::PassManager PM;
+    PM.add(createAlwaysInlinerLegacyPass());
+    PM.run(*TSM.getModule());
+
+    legacy::FunctionPassManager FPM(TSM.getModule());
+    FPM.add(createInstructionCombiningPass());
+    FPM.add(createReassociatePass());
+    FPM.add(createGVNPass());
+    FPM.add(createCFGSimplificationPass());
+    FPM.add(createAggressiveDCEPass());
+    FPM.doInitialization();
+
+    for (auto &F : *TSM.getModule())
+      if (F.getName().startswith("smt_"))
+        FPM.run(F);
+//
+//    for (auto &F : *TSM.getModule())
+//      if (!F.getName().startswith("smt_"))
+//        F.deleteBody();
+
+    TSM.getModule()->dump();
+    return TSM;
   }
 };
 

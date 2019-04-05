@@ -36,7 +36,10 @@ std::unique_ptr<llvm::Module> CloneDeclarationsAndPrepare(llvm::Module &M) {
     if (func.isDeclaration())
       continue;
 
-    func.deleteBody();
+//    if (func.getInstructionCount() > 28 ||
+//        !func.getName().startswith("bv_") ||
+//        func.getName().contains("context"))
+      func.deleteBody();
   }
 
   for (auto it = cloned.global_begin(), e = cloned.global_end(); it != e;) {

@@ -186,6 +186,7 @@ void Smt2LLVM::emitFormula(Twine funName) {
   Function *func =
       Function::Create(funcTy, GlobalValue::ExternalLinkage, funName, m_module);
   func->setAttributes(m_bvaSelectFn->getAttributes());
+  func->removeFnAttr(Attribute::AlwaysInline);
 
   Argument *arrPack = &*func->arg_begin();
   arrPack->setName("arrays");
@@ -250,6 +251,7 @@ Smt2LLVM::emitFunctionOverBVArrays(Twine name) {
   Function *func =
       Function::Create(funcTy, GlobalValue::ExternalLinkage, name, m_module);
   func->setAttributes(m_bvaSelectFn->getAttributes());
+  func->setLinkage(GlobalVariable::LinkageTypes::PrivateLinkage);
   BasicBlock::Create(m_ctx, "entry", func);
 
   assert(m_parser.numArrays() == func->arg_size());
@@ -474,7 +476,7 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
     }
   }
 
-  if (func->getInstructionCount() <= 32)
+  if (func->getInstructionCount() <= 64)
     func->addFnAttr(Attribute::AlwaysInline);
 
   m_builder = nullptr;
