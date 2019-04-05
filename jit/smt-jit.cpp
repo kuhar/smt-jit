@@ -251,11 +251,21 @@ int parseSmtAndEval(StringRef filename, SmtJit &jit,
 
   smt_jit::SmtLibParser parser(filename);
 
+  using namespace std::chrono;
+  const auto compilationStart = steady_clock::now();
+
   std::unique_ptr<llvm::Module> freshModule =
       smt_jit::CloneBVLibTemplate(bvLibTemplate);
   assert(freshModule);
 
   std::string smtFunctionName = emitSmtFormula(parser, *freshModule);
+  const auto compilationEnd = steady_clock::now();
+  if (BenchmarkMode) {
+    const auto ms =
+        duration_cast<milliseconds>(compilationEnd - compilationStart);
+    llvm::outs() << "[COMPILATION] Time " << ms.count() << " ms\n";
+  }
+
   if (SaveTemps) {
     LastTempModulePath = tempDest.str();
     smt_jit::SaveIRToFile(*freshModule, tempDest + ".ll");
@@ -302,7 +312,6 @@ int parseSmtAndEval(StringRef filename, SmtJit &jit,
     }
     llvm::outs() << "\n";
   } else {
-    using namespace std::chrono;
     const auto startTime = steady_clock::now();
 
     size_t totalModels = 0;
