@@ -16,11 +16,13 @@
 #include "llvm/IR/Verifier.h"
 
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
@@ -44,10 +46,28 @@
 
 #include <cstdio>
 
+#define DEBUG_TYPE "smt-jit"
+
 using namespace llvm;
 
 static cl::list<std::string> InputFilenames(cl::Positional, cl::OneOrMore,
                                             cl::desc("<input smtlib2 files>"));
+
+static llvm::cl::opt<bool>
+    NoOpt("no-opt",
+          llvm::cl::desc("[smt-jit] Don't run the optimization pipeline"),
+          llvm::cl::init(false));
+
+static llvm::cl::opt<bool>
+    SaveTemps("save-temps",
+              llvm::cl::desc("[smt-jit] Save intermediate IR modules"),
+              llvm::cl::init(false));
+
+static llvm::cl::opt<std::string>
+    TempDir("temp-dir", llvm::cl::desc("Temporary file directory"),
+            llvm::cl::init("."), llvm::cl::value_desc("filename"));
+
+static std::string LastTempModulePath;
 
 class SmtJit {
 private:
@@ -107,53 +127,42 @@ private:
   static Expected<orc::ThreadSafeModule>
   optimizeModule(orc::ThreadSafeModule TSM,
                  const orc::MaterializationResponsibility &R) {
+    if (NoOpt)
+      return TSM;
+
     legacy::PassManager PM;
     PM.add(createAlwaysInlinerLegacyPass());
     PM.run(*TSM.getModule());
 
+    if (SaveTemps)
+      smt_jit::SaveIRToFile(*TSM.getModule(), {LastTempModulePath, ".inl.ll"});
+
     legacy::FunctionPassManager FPM(TSM.getModule());
     FPM.add(createInstructionCombiningPass());
-    FPM.add(createReassociatePass());
     FPM.add(createGVNPass());
     FPM.add(createCFGSimplificationPass());
-    FPM.add(createAggressiveDCEPass());
     FPM.doInitialization();
 
     for (auto &F : *TSM.getModule())
       if (F.getName().startswith("smt_"))
         FPM.run(F);
-//
-//    for (auto &F : *TSM.getModule())
-//      if (!F.getName().startswith("smt_"))
-//        F.deleteBody();
 
-    TSM.getModule()->dump();
+    if (SaveTemps)
+      smt_jit::SaveIRToFile(*TSM.getModule(), {LastTempModulePath, ".opt.ll"});
+
     return TSM;
   }
 };
 
 void dummyFun() {}
 
-bool doBVLibSanityCheck(SmtJit &jit) {
-  auto errLookup = jit.lookup("bv_print");
-  if (!errLookup) {
-    llvm::errs() << "Lookup failed: " << errLookup.takeError() << "\n";
-    return false;
-  }
+static bool doBVLibSanityCheck(SmtJit &jit);
 
-  static bv_word cnt = 0;
-  ++cnt;
+static int parseSmtAndEval(StringRef filename, SmtJit &jit,
+                            const llvm::Module &bvLibTemplate);
 
-  llvm::outs() << "[Startup-sanity-check] About to print bv_mk(8, " << cnt
-               << "):\n\t";
-  auto *bv_printPtr = (void (*)(bitvector))errLookup->getAddress();
-  llvm::outs().flush();
-
-  const bitvector test_bv = bv_mk(8, cnt);
-  bv_printPtr(test_bv);
-  puts("");
-  return true;
-}
+static bool models(smt_jit::SmtLibParser &parser, unsigned assignmentIdx,
+                   int (*smtFunctionPtr)(bv_array **), bool verbose = false);
 
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;
@@ -199,7 +208,6 @@ int main(int argc, char **argv) {
     llvm::errs() << "Failed to create module template for jitted formulas!\n";
     return 2;
   }
-  bvlibDeclsTemplate->dump();
 
   auto errAddModule = jit->addModule(std::move(m));
   if (errAddModule) {
@@ -207,20 +215,56 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  llvm::outs() << "\nInput files: \n";
   for (const std::string &filename : InputFilenames) {
-    llvm::outs() << "\t" << filename << "\n";
-
     if (!llvm::sys::fs::exists(filename)) {
-      llvm::outs().flush();
-      llvm::errs() << "\nFile " << filename << " does not exits!\n";
-      return 1;
+      llvm::errs() << "File " << filename << " does not exits\n";
+      continue;
+    }
+
+    const int res = parseSmtAndEval(filename, *jit, *bvlibDeclsTemplate);
+    llvm::outs().flush();
+
+    if (res != 0) {
+      llvm::errs() << "Execution error, the jit will terminate\n";
+      return res;
     }
   }
 
+  return 0;
+}
+
+int parseSmtAndEval(StringRef filename, SmtJit &jit,
+                    const llvm::Module &bvLibTemplate) {
+  llvm::outs() << "Evaluating: " << filename << "\n";
+  const StringRef tempBasename = llvm::sys::path::filename(filename);
+  const Twine tempDest = TempDir + "/" + tempBasename;
+
+  smt_jit::SmtLibParser parser(filename);
+
+  std::unique_ptr<llvm::Module> freshModule =
+      smt_jit::CloneBVLibTemplate(bvLibTemplate);
+  assert(freshModule);
+
+  std::string smtFunctionName = emitSmtFormula(parser, *freshModule);
+  if (SaveTemps) {
+    LastTempModulePath = tempDest.str();
+    smt_jit::SaveIRToFile(*freshModule, tempDest + ".ll");
+  }
+
+  auto addSmtModule = jit.addModule(std::move(freshModule));
+  if (addSmtModule) {
+    llvm::errs() << "Could not add a new smt module: " << addSmtModule << "\n";
+    return 2;
+  }
+
+  LLVM_DEBUG(if (!doBVLibSanityCheck(jit)) {
+    llvm::errs() << "Sanity check failed, aborting.\n";
+    return 2;
+  });
+
   auto lookupFunctionOrNone =
       [&jit](StringRef name) -> llvm::Optional<JITTargetAddress> {
-    auto errLookup = jit->lookup(name);
+    auto errLookup = jit.lookup(name);
     if (!errLookup) {
       llvm::errs() << "Lookup of the function " << name
                    << " failed: " << errLookup.takeError() << "\n";
@@ -230,86 +274,93 @@ int main(int argc, char **argv) {
     return errLookup->getAddress();
   };
 
-  for (const std::string &filename : InputFilenames) {
-    llvm::outs() << "Executing: " << filename << "\n";
-    smt_jit::SmtLibParser parser(filename);
+  auto smtFnAddr = lookupFunctionOrNone(smtFunctionName);
+  if (!smtFnAddr.hasValue())
+    return 2;
 
-    std::unique_ptr<llvm::Module> freshModule =
-        smt_jit::CloneBVLibTemplate(*bvlibDeclsTemplate);
-    assert(freshModule);
+  auto *smtFunctionPtr = (int (*)(bv_array **))smtFnAddr.getValue();
+  llvm::outs().flush();
 
-    std::string smtFunctionName = emitSmtFormula(parser, *freshModule);
-    auto addSmtModule = jit->addModule(std::move(freshModule));
-    if (addSmtModule) {
-      llvm::errs() << "Could not add a new smt module: " << errAddModule
-                   << "\n";
-      return 2;
-    }
+  bv_init_context();
 
-    if (!doBVLibSanityCheck(*jit)) {
-      llvm::errs() << "Sanity check failed, aborting.\n";
-      return 2;
-    }
-
-    auto smtFnAddr = lookupFunctionOrNone(smtFunctionName);
-    if (!smtFnAddr.hasValue())
-      return 2;
-
-    auto *smtFunctionPtr = (int (*)(bv_array **))smtFnAddr.getValue();
-    llvm::outs().flush();
-
-    bv_init_context();
-
-    const unsigned numArrays = parser.numArrays();
-
-    {
-      size_t assignmentIdx = 0;
-      for (smt_jit::Assignment &assignment : parser.assignments()) {
-        const size_t currentAssignmentIdx = assignmentIdx;
-        ++assignmentIdx;
-        llvm::outs() << "Assignment " << currentAssignmentIdx << ": ";
-
-        if (assignment.numVariables() != numArrays) {
-          llvm::outs() << "wrong number of variables ("
-                       << assignment.numVariables() << " vs. " << numArrays
-                       << ")\n";
-          continue;
-        }
-
-        SmallVector<bv_array *, 4> varToArray;
-        varToArray.reserve(numArrays);
-
-        bool OK = true;
-        for (const smt_jit::ArrayInfo &ai : parser.arrays()) {
-          using AssignmentVector = smt_jit::Assignment::AssignmentVector;
-
-          if (!assignment.hasVariable(ai.name)) {
-            llvm::outs() << "partial assignment, " << ai.name << " missing\n";
-            OK = false;
-            break;
-          }
-
-          AssignmentVector &arr = assignment.getValue(ai.name);
-          bv_array *bv_arr =
-              bva_mk_init(ai.element_width, arr.size(), arr.data());
-          varToArray.push_back(bv_arr);
-        }
-
-        if (!OK)
-          continue;
-
-        assert(varToArray.size() == numArrays);
-        int res = smtFunctionPtr(varToArray.data());
-
-        if (res == 0)
-          llvm::outs() << "models\n";
-        else
-          llvm::outs() << "assertion " << res << " failed\n";
-      }
-    }
-
-    bv_reset_context();
+  llvm::outs() << "Formula modeled by assignments: ";
+  for (size_t assignmentIdx = 0, e = parser.numAssignments();
+       assignmentIdx != e; ++assignmentIdx) {
+    const bool res = models(parser, assignmentIdx, smtFunctionPtr, false);
+    if (res)
+      llvm::outs() << assignmentIdx << ", ";
   }
+  llvm::outs() << "\n";
+
+  bv_reset_context();
 
   return 0;
+}
+
+bool models(smt_jit::SmtLibParser &parser, unsigned assignmentIdx,
+            int (*smtFunctionPtr)(bv_array **), bool verbose /* = false */) {
+  smt_jit::Assignment &assignment = parser.assignments()[assignmentIdx];
+  const size_t numArrays = parser.numArrays();
+
+  if (verbose)
+    llvm::outs() << "Assignment " << assignmentIdx << ": ";
+
+  if (assignment.numVariables() != numArrays) {
+    if (verbose)
+      llvm::outs() << "wrong number of variables (" << assignment.numVariables()
+                   << " vs. " << numArrays << ")\n";
+    return false;
+  }
+
+  SmallVector<bv_array *, 4> varToArray;
+  varToArray.reserve(numArrays);
+
+  for (const smt_jit::ArrayInfo &ai : parser.arrays()) {
+    using AssignmentVector = smt_jit::Assignment::AssignmentVector;
+
+    if (!assignment.hasVariable(ai.name)) {
+      if (verbose)
+        llvm::outs() << "partial assignment, " << ai.name << " missing\n";
+      return false;
+    }
+
+    AssignmentVector &arr = assignment.getValue(ai.name);
+    bv_array *bv_arr = bva_mk_init(ai.element_width, arr.size(), arr.data());
+    varToArray.push_back(bv_arr);
+  }
+
+  assert(varToArray.size() == numArrays);
+  int res = smtFunctionPtr(varToArray.data());
+
+  if (res == 0) {
+    if (verbose)
+      llvm::outs() << "models\n";
+    return true;
+  }
+
+  if (verbose)
+    llvm::outs() << "assertion " << res << " failed\n";
+
+  return false;
+}
+
+bool doBVLibSanityCheck(SmtJit &jit) {
+  auto errLookup = jit.lookup("bv_print");
+  if (!errLookup) {
+    llvm::errs() << "Lookup failed: " << errLookup.takeError() << "\n";
+    return false;
+  }
+
+  static bv_word cnt = 0;
+  ++cnt;
+
+  llvm::outs() << "[Startup-sanity-check] About to print bv_mk(8, " << cnt
+               << "):\n\t";
+  auto *bv_printPtr = (void (*)(bitvector))errLookup->getAddress();
+  llvm::outs().flush();
+
+  const bitvector test_bv = bv_mk(8, cnt);
+  bv_printPtr(test_bv);
+  puts("");
+  return true;
 }

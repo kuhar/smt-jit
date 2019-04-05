@@ -9,6 +9,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <fstream>
+
 using namespace llvm;
 
 namespace smt_jit {
@@ -18,8 +20,9 @@ std::unique_ptr<llvm::Module> CloneDeclarationsAndPrepare(llvm::Module &M) {
     if (func.isDeclaration())
       continue;
 
-    // func.setName({"ir_", func.getName()});
-    if (func.getInstructionCount() <= 28 || func.getName() == "bv_mk")
+    if ((func.getInstructionCount() <= 28 &&
+         !func.getName().contains("context")) ||
+        func.getName() == "bv_mk")
       func.addFnAttr(Attribute::AlwaysInline);
 
     func.setLinkage(GlobalValue::LinkageTypes::ExternalLinkage);
@@ -35,10 +38,9 @@ std::unique_ptr<llvm::Module> CloneDeclarationsAndPrepare(llvm::Module &M) {
   for (auto &func : cloned) {
     if (func.isDeclaration())
       continue;
-
-//    if (func.getInstructionCount() > 28 ||
-//        !func.getName().startswith("bv_") ||
-//        func.getName().contains("context"))
+		
+    func.setLinkage(GlobalValue::LinkageTypes::WeakAnyLinkage);
+    if (!func.hasFnAttribute(Attribute::AlwaysInline))
       func.deleteBody();
   }
 
@@ -55,6 +57,19 @@ std::unique_ptr<llvm::Module> CloneDeclarationsAndPrepare(llvm::Module &M) {
 
 std::unique_ptr<Module> CloneBVLibTemplate(const Module &M) {
   return llvm::CloneModule(M);
+}
+
+void SaveIRToFile(const llvm::Module &M, Twine path) {
+  // FIXME: That's most likely not the best way to save .ll to a file...
+  llvm::errs() << "Saving temp: " << path << "\n";
+  std::ofstream file(path.str());
+
+  std::string buff;
+  llvm::raw_string_ostream os(buff);
+  M.print(os, nullptr, false, false);
+  os.flush();
+
+  file << buff;
 }
 
 } // namespace smt_jit
