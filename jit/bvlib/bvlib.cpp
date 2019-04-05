@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #if BVLIB_ENABLE_ASSERTIONS == 1
 #include <cassert>
@@ -81,6 +82,11 @@ struct BVContext {
   void init() {
     memNext = memBegin = (char *)calloc(PoolWords, BVWordBytes);
     memEnd = memBegin + PoolBytes;
+  }
+
+  void reset() {
+    memset(memBegin, 0, (memNext - memBegin) * BVWordBytes);
+    memNext = memBegin;
   }
 
   void teardown() { free(memBegin); }
@@ -288,6 +294,7 @@ bv_array *bva_mk_init(bv_width width, bv_width len, bv_word *constants) {
 }
 
 void bv_init_context() { BVContext::get().init(); }
+void bv_reset_context() { BVContext::get().reset(); }
 void bv_teardown_context() { BVContext::get().teardown(); }
 
 bitvector bva_select(bv_array *arr, bitvector n) {

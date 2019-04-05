@@ -52,6 +52,9 @@ class Smt2LLVM {
 
   Function *m_bvMkFn = nullptr;
   Function *m_bvEqFn = nullptr;
+  Function *m_bvExtractFn = nullptr;
+  Function *m_bvZExtFn = nullptr;
+  Function *m_bvSExtFn = nullptr;
 
   Function *m_bvaSelectFn = nullptr;
 
@@ -69,7 +72,11 @@ private:
   std::pair<Value *, Value *> unpackI64Pair(Value *valPair);
   Value *lowerBVMk(Value *constant, Value *width, Twine name = "bv");
   Value *lowerCmp(Value *lhs, Value *rhs, Twine name = "cmp");
+  Value *lowerAnd(Value *lhs, Value *rhs, Twine name = "and");
   Value *lowerEq(Value *lhs, Value *rhs, Twine name = "eq");
+  Value *lowerExtract(Value *bv, Value *from, Value *to, Twine name = "extr");
+  Value *lowerZExt(Value *val, Value *width, Twine name = "zext");
+  Value *lowerSExt(Value *val, Value *width, Twine name = "sext");
   Value *lowerSelect(Value *array, Value *index, Twine name = "select");
 };
 } // namespace
@@ -121,6 +128,15 @@ Smt2LLVM::Smt2LLVM(SmtLibParser &parser, llvm::Module &M)
   assert(m_bvEqFn);
   assert(m_bvEqFn->getReturnType() == m_i32Ty);
   assert(m_bvEqFn->arg_size() == 4);
+
+  m_bvExtractFn = m_module.getFunction("bv_extract");
+  assert(m_bvExtractFn);
+  assert(m_bvExtractFn->arg_size() == 4);
+
+  m_bvZExtFn = m_module.getFunction("bv_zext");
+  assert(m_bvZExtFn);
+  m_bvSExtFn = m_module.getFunction("bv_sext");
+  assert(m_bvSExtFn);
 
   m_bvaSelectFn = m_module.getFunction("bva_select");
   assert(m_bvaSelectFn);
@@ -248,6 +264,13 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
     Sexp &parent = *view.parent;
 
     if (!view.isHead()) {
+      if (str == "extract" || str == "zero_extend" || str == "sign_extend") {
+        // BitVecor pseudooperators are handled by the "_" pseudofunctions
+        // (head). Do nothing here.
+        assert(view.getHead().getString() == "_");
+        continue;
+      }
+
       if (view.sexp->isNumber()) {
         const auto num = view.sexp->toNumber();
         stackPush(lowerIntegerConstant(num));
@@ -285,10 +308,38 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, Twine name) {
       llvm::errs() << "Operand \"" << str << "\" not handled!\n";
       llvm_unreachable("Unknown symbol");
     } else {
+      // "_" is a BitVector pseudofunction and requires special handling.
+      // The first parameter is the real operator, and the remaining parameters
+      // are the real operands.
       if (str == "_") {
-        Value *width = stackPop();
-        Value *constant = stackPop();
-        stackPush(lowerBVMk(constant, width, parent.getChild(1).getString()));
+        assert(parent.childCount() > 1);
+        assert(parent.getChild(1).isString());
+        StringRef realFn = parent.getChild(1).getString();
+        if (realFn.startswith("bv")) {
+          Value *width = stackPop();
+          Value *constant = stackPop();
+          stackPush(lowerBVMk(constant, width, parent.getChild(1).getString()));
+        } else if (realFn == "extract") {
+          Value *to = stackPop();
+          Value *from = stackPop();
+          Value *bv = stackPop();
+          stackPush(lowerExtract(bv, from, to));
+        } else if (realFn == "zero_extend") {
+          Value *width = stackPop();
+          Value *bv = stackPop();
+          stackPush(lowerZExt(bv, width));
+        } else if (realFn == "sign_extend") {
+          Value *width = stackPop();
+          Value *bv = stackPop();
+          stackPush(lowerSExt(bv, width));
+        }
+        continue;
+      }
+
+      if (str == "and") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerAnd(lhs, rhs));
         continue;
       }
 
@@ -360,7 +411,13 @@ Value *Smt2LLVM::lowerCmp(Value *lhs, Value *rhs, Twine name) {
     return lowerEq(lhs, rhs);
 
   Value *cmp = m_builder->CreateICmpEQ(lhs, rhs, name);
-  return m_builder->CreateZExt(cmp, m_i32Ty);
+  return m_builder->CreateZExt(cmp, m_i32Ty, {cmp->getName(), ".z"});
+}
+
+Value *Smt2LLVM::lowerAnd(Value *lhs, Value *rhs, Twine name) {
+  assert(lhs->getType() == m_i32Ty);
+  assert(rhs->getType() == m_i32Ty);
+  return m_builder->CreateAnd(lhs, rhs, name);
 }
 
 Value *Smt2LLVM::lowerEq(Value *lhs, Value *rhs, Twine name) {
@@ -371,6 +428,32 @@ Value *Smt2LLVM::lowerEq(Value *lhs, Value *rhs, Twine name) {
   return m_builder->CreateCall(m_bvEqFn,
                                {lhsUnpacked.first, lhsUnpacked.second,
                                 rhsUnpacked.first, rhsUnpacked.second},
+                               name);
+}
+
+Value *Smt2LLVM::lowerExtract(Value *bv, Value *from, Value *to, Twine name) {
+  assert(from->getType()->isIntegerTy());
+  assert(to->getType()->isIntegerTy());
+  auto unpacked = unpackI64Pair(bv);
+  Value *f = m_builder->CreateZExtOrTrunc(from, m_i32Ty);
+  Value *t = m_builder->CreateZExtOrTrunc(to, m_i32Ty);
+  return m_builder->CreateCall(m_bvExtractFn,
+                               {unpacked.first, unpacked.second, f, t}, name);
+}
+
+Value *Smt2LLVM::lowerZExt(Value *val, Value *width, Twine name) {
+  assert(width->getType()->isIntegerTy());
+  auto unpacked = unpackI64Pair(val);
+  Value *w = m_builder->CreateZExtOrTrunc(width, m_i32Ty);
+  return m_builder->CreateCall(m_bvZExtFn, {unpacked.first, unpacked.second, w},
+                               name);
+}
+
+Value *Smt2LLVM::lowerSExt(Value *val, Value *width, Twine name) {
+  assert(width->getType()->isIntegerTy());
+  auto unpacked = unpackI64Pair(val);
+  Value *w = m_builder->CreateZExtOrTrunc(width, m_i32Ty);
+  return m_builder->CreateCall(m_bvSExtFn, {unpacked.first, unpacked.second, w},
                                name);
 }
 

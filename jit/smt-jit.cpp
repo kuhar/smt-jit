@@ -246,7 +246,7 @@ int main(int argc, char **argv) {
           using AssignmentVector = smt_jit::Assignment::AssignmentVector;
 
           if (!assignment.hasVariable(ai.name)) {
-            llvm::outs() << "missing valuation for " << ai.name << "\n";
+            llvm::outs() << "partial assignment, " << ai.name << " missing\n";
             OK = false;
             break;
           }
@@ -270,7 +270,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    bv_teardown_context();
+    bv_reset_context();
   }
 
   return 0;
