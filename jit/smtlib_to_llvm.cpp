@@ -185,6 +185,8 @@ void Smt2LLVM::emitFormula(Twine funName) {
 
   Function *func =
       Function::Create(funcTy, GlobalValue::ExternalLinkage, funName, m_module);
+  func->setAttributes(m_bvaSelectFn->getAttributes());
+
   Argument *arrPack = &*func->arg_begin();
   arrPack->setName("arrays");
 
@@ -247,7 +249,7 @@ Smt2LLVM::emitFunctionOverBVArrays(Twine name) {
   auto *funcTy = FunctionType::get(m_i32Ty, arrayTyInputs, false);
   Function *func =
       Function::Create(funcTy, GlobalValue::ExternalLinkage, name, m_module);
-
+  func->setAttributes(m_bvaSelectFn->getAttributes());
   BasicBlock::Create(m_ctx, "entry", func);
 
   assert(m_parser.numArrays() == func->arg_size());
@@ -258,6 +260,11 @@ Smt2LLVM::emitFunctionOverBVArrays(Twine name) {
   for (const ArrayInfo &ai : m_parser.arrays()) {
     assert(argIt != argEnd);
     argIt->setName(ai.name);
+    argIt->addAttr(Attribute::NoAlias);
+    argIt->addAttr(Attribute::NoCapture);
+    argIt->addAttr(Attribute::NonNull);
+    argIt->addAttr(Attribute::ReadOnly);
+
     arrayToArg[ai.name] = &*argIt;
     ++argIt;
   }
