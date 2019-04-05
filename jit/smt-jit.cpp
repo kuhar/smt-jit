@@ -45,6 +45,7 @@
 #include "smtlib_to_llvm.hpp"
 
 #include <cstdio>
+#include <chrono>
 
 #define DEBUG_TYPE "smt-jit"
 
@@ -59,13 +60,22 @@ static llvm::cl::opt<bool>
           llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-    SaveTemps("save-temps",
-              llvm::cl::desc("[smt-jit] Save intermediate IR modules"),
+    SaveTemps("save-temps", llvm::cl::desc("Save intermediate IR modules"),
               llvm::cl::init(false));
 
 static llvm::cl::opt<std::string>
     TempDir("temp-dir", llvm::cl::desc("Temporary file directory"),
             llvm::cl::init("."), llvm::cl::value_desc("filename"));
+
+static llvm::cl::opt<bool>
+    BenchmarkMode("benchmark",
+                  llvm::cl::desc("[smt-jit] Run in benchmarking mode"),
+                  llvm::cl::init(false));
+
+static llvm::cl::opt<unsigned> BenchmarkIterations(
+    "iterations",
+    llvm::cl::desc("[smt-jit] Number of iterations (for benchmarking)"),
+    llvm::cl::init(10000));
 
 static std::string LastTempModulePath;
 
@@ -282,16 +292,35 @@ int parseSmtAndEval(StringRef filename, SmtJit &jit,
   llvm::outs().flush();
 
   bv_init_context();
+  if (!BenchmarkMode) {
+    llvm::outs() << "Formula modeled by assignments: ";
+    for (size_t assignmentIdx = 0, e = parser.numAssignments();
+         assignmentIdx != e; ++assignmentIdx) {
+      const bool res = models(parser, assignmentIdx, smtFunctionPtr, false);
+      if (res)
+        llvm::outs() << assignmentIdx << ", ";
+    }
+    llvm::outs() << "\n";
+  } else {
+    using namespace std::chrono;
+    const auto startTime = steady_clock::now();
 
-  llvm::outs() << "Formula modeled by assignments: ";
-  for (size_t assignmentIdx = 0, e = parser.numAssignments();
-       assignmentIdx != e; ++assignmentIdx) {
-    const bool res = models(parser, assignmentIdx, smtFunctionPtr, false);
-    if (res)
-      llvm::outs() << assignmentIdx << ", ";
+    size_t totalModels = 0;
+    for (unsigned iter = 0, e = BenchmarkIterations; iter != e; ++iter) {
+      for (size_t assignmentIdx = 0, e = parser.numAssignments();
+           assignmentIdx != e; ++assignmentIdx)
+        totalModels += models(parser, assignmentIdx, smtFunctionPtr, false);
+
+      bv_reset_context();
+    }
+
+    const auto endTime = steady_clock::now();
+    const auto ms = duration_cast<milliseconds>(endTime - startTime);
+
+    llvm::outs() << "Total models: " << totalModels << " / "
+                 << BenchmarkIterations << " iterations\n";
+    llvm::outs() << "[BENCHMARK] Time " << ms.count() << " ms\n";
   }
-  llvm::outs() << "\n";
-
   bv_reset_context();
 
   return 0;
@@ -312,8 +341,7 @@ bool models(smt_jit::SmtLibParser &parser, unsigned assignmentIdx,
     return false;
   }
 
-  SmallVector<bv_array *, 4> varToArray;
-  varToArray.reserve(numArrays);
+  SmallVector<bv_array *, 2> varToArray;
 
   for (const smt_jit::ArrayInfo &ai : parser.arrays()) {
     using AssignmentVector = smt_jit::Assignment::AssignmentVector;
@@ -330,8 +358,8 @@ bool models(smt_jit::SmtLibParser &parser, unsigned assignmentIdx,
   }
 
   assert(varToArray.size() == numArrays);
-  int res = smtFunctionPtr(varToArray.data());
 
+  int res = smtFunctionPtr(varToArray.data());
   if (res == 0) {
     if (verbose)
       llvm::outs() << "models\n";
