@@ -59,6 +59,7 @@ class SmtLibParser {
   std::vector<Assignment> m_assignments;
   llvm::SmallVector<ArrayInfo, 2> m_arrays;
   std::vector<sexpresso::Sexp> m_assertions;
+  std::string m_kleeTime;
 
 public:
   SmtLibParser(llvm::StringRef fileName);
@@ -75,6 +76,8 @@ public:
   size_t numAssignments() const { return m_assignments.size(); }
   size_t numArrays() const { return m_arrays.size(); }
   size_t numAssertions() const { return m_assertions.size(); }
+
+  llvm::StringRef getKleeTime() const { return m_kleeTime; }
 
 private:
   void init(std::istream &iss);

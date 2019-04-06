@@ -82,6 +82,7 @@ private:
   Value *lowerBVMk(Value *constant, Value *width, const Twine &name = "bv");
   Value *lowerCmp(Value *lhs, Value *rhs, const Twine &name = "cmp");
   Value *lowerAnd(Value *lhs, Value *rhs, const Twine &name = "and");
+  Value *lowerOr(Value *lhs, Value *rhs, const Twine &name = "and");
   Value *lowerBvBinaryFn(Value *lhs, Value *rhs, Function *op,
                          const Twine &name = "binop");
   Value *lowerEq(Value *lhs, Value *rhs, const Twine &name = "eq");
@@ -391,6 +392,13 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, const Twine &name) {
         continue;
       }
 
+      if (str == "or") {
+        Value *rhs = stackPop();
+        Value *lhs = stackPop();
+        stackPush(lowerOr(lhs, rhs));
+        continue;
+      }
+
       // Let definition.
       if (str.startswith(R"(\?)")) {
         letToVal[str] = stackPop();
@@ -518,6 +526,12 @@ Value *Smt2LLVM::lowerAnd(Value *lhs, Value *rhs, const Twine &name) {
   assert(lhs->getType() == m_i32Ty);
   assert(rhs->getType() == m_i32Ty);
   return m_builder->CreateAnd(lhs, rhs, name);
+}
+
+Value *Smt2LLVM::lowerOr(Value *lhs, Value *rhs, const Twine &name) {
+  assert(lhs->getType() == m_i32Ty);
+  assert(rhs->getType() == m_i32Ty);
+  return m_builder->CreateOr(lhs, rhs, name);
 }
 
 Value *Smt2LLVM::lowerBvBinaryFn(Value *lhs, Value *rhs, Function *op,

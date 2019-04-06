@@ -53,6 +53,11 @@ void SmtLibParser::init(std::istream &iss) {
       parseArrayDecl(line);
     else if (lineView.startswith("(assert"))
       parseAssertion(line);
+    else if (lineView.startswith("; Assignments")) {
+      lineView = lineView.ltrim();
+      lineView.consume_front("; Assignments ");
+      m_kleeTime = lineView.str();
+    }
   }
 }
 

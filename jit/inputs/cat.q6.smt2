@@ -1,11 +1,11 @@
-; QueryHash 10284906501723903884
+; QueryHash 15657178011164944421
 (set-logic QF_AUFBV )
 (declare-fun arg00 () (Array (_ BitVec 32) (_ BitVec 8) ) )
-(assert (let ( (?B1 (select  arg00 (_ bv2 32) ) ) ) (and  (and  (=  (_ bv110 8) ?B1 ) (=  false (=  (_ bv0 8) ?B1 ) ) ) (=  false (=  (_ bv61 8) ?B1 ) ) ) ) )
+(assert (let ( (?B1 (select  arg00 (_ bv1 32) ) ) ) (and  (and  (and  (=  (_ bv58 8) ?B1 ) (=  false (=  (_ bv0 8) ?B1 ) ) ) (=  false (=  (_ bv45 8) ?B1 ) ) ) (=  (_ bv115 8) ((_ extract 7  0)  ((_ sign_extend 24)  ?B1 ) ) ) ) ) )
 (check-sat)
 (exit)
 
-; Assignments 863 ms
+; Assignments 830 ms
 ; { "arg00": [0, 0, 0, 0, 1, 0, 0, 0] }
 ; { "arg00": [0, 0, 0, 0, 61, 0, 0, 0] }
 ; { "arg00": [0, 0, 0, 1, 0, 0, 0, 0] }

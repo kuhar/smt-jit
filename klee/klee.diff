@@ -1,0 +1,777 @@
+diff --git a/include/klee/util/Assignment.h b/include/klee/util/Assignment.h
+index 55e681d..d33648d 100644
+--- a/include/klee/util/Assignment.h
++++ b/include/klee/util/Assignment.h
+@@ -1,101 +1,102 @@
+ //===-- Assignment.h --------------------------------------------*- C++ -*-===//
+ //
+ //                     The KLEE Symbolic Virtual Machine
+ //
+ // This file is distributed under the University of Illinois Open Source
+ // License. See LICENSE.TXT for details.
+ //
+ //===----------------------------------------------------------------------===//
+ 
+ #ifndef KLEE_UTIL_ASSIGNMENT_H
+ #define KLEE_UTIL_ASSIGNMENT_H
+ 
+ #include <map>
+ 
+ #include "klee/util/ExprEvaluator.h"
+ 
+ // FIXME: Rename?
+ 
+ namespace klee {
+   class Array;
+ 
+   class Assignment {
+   public:
+     typedef std::map<const Array*, std::vector<unsigned char> > bindings_ty;
+ 
+     bool allowFreeValues;
+     bindings_ty bindings;
+     
+   public:
+     Assignment(bool _allowFreeValues=false) 
+       : allowFreeValues(_allowFreeValues) {}
+     Assignment(const std::vector<const Array*> &objects,
+                std::vector< std::vector<unsigned char> > &values,
+                bool _allowFreeValues=false) 
+       : allowFreeValues(_allowFreeValues){
+       std::vector< std::vector<unsigned char> >::iterator valIt = 
+         values.begin();
+       for (std::vector<const Array*>::const_iterator it = objects.begin(),
+              ie = objects.end(); it != ie; ++it) {
+         const Array *os = *it;
+         std::vector<unsigned char> &arr = *valIt;
+         bindings.insert(std::make_pair(os, arr));
+         ++valIt;
+       }
+     }
+     
+     ref<Expr> evaluate(const Array *mo, unsigned index) const;
+     ref<Expr> evaluate(ref<Expr> e);
+     void createConstraintsFromAssignment(std::vector<ref<Expr> > &out) const;
+ 
+     template<typename InputIterator>
+     bool satisfies(InputIterator begin, InputIterator end);
++    void write(llvm::raw_ostream &os);
+     void dump();
+   };
+   
+   class AssignmentEvaluator : public ExprEvaluator {
+     const Assignment &a;
+ 
+   protected:
+     ref<Expr> getInitialValue(const Array &mo, unsigned index) {
+       return a.evaluate(&mo, index);
+     }
+     
+   public:
+     AssignmentEvaluator(const Assignment &_a) : a(_a) {}    
+   };
+ 
+   /***/
+ 
+   inline ref<Expr> Assignment::evaluate(const Array *array, 
+                                         unsigned index) const {
+     assert(array);
+     bindings_ty::const_iterator it = bindings.find(array);
+     if (it!=bindings.end() && index<it->second.size()) {
+       return ConstantExpr::alloc(it->second[index], array->getRange());
+     } else {
+       if (allowFreeValues) {
+         return ReadExpr::create(UpdateList(array, 0), 
+                                 ConstantExpr::alloc(index, array->getDomain()));
+       } else {
+         return ConstantExpr::alloc(0, array->getRange());
+       }
+     }
+   }
+ 
+   inline ref<Expr> Assignment::evaluate(ref<Expr> e) { 
+     AssignmentEvaluator v(*this);
+     return v.visit(e); 
+   }
+ 
+   template<typename InputIterator>
+   inline bool Assignment::satisfies(InputIterator begin, InputIterator end) {
+     AssignmentEvaluator v(*this);
+     for (; begin!=end; ++begin)
+       if (!v.visit(*begin)->isTrue())
+         return false;
+     return true;
+   }
+ }
+ 
+ #endif
+diff --git a/lib/Basic/ConstructSolverChain.cpp b/lib/Basic/ConstructSolverChain.cpp
+index 39e0e82..cfba213 100644
+--- a/lib/Basic/ConstructSolverChain.cpp
++++ b/lib/Basic/ConstructSolverChain.cpp
+@@ -1,77 +1,79 @@
+ //===-- ConstructSolverChain.cpp ------------------------------------++ -*-===//
+ //
+ //                     The KLEE Symbolic Virtual Machine
+ //
+ // This file is distributed under the University of Illinois Open Source
+ // License. See LICENSE.TXT for details.
+ //
+ //===----------------------------------------------------------------------===//
+ 
+ /*
+  * This file groups declarations that are common to both KLEE and Kleaver.
+  */
+ #include "klee/Common.h"
+ #include "klee/SolverCmdLine.h"
+ #include "klee/Internal/Support/ErrorHandling.h"
+ #include "klee/Internal/System/Time.h"
+ #include "llvm/Support/raw_ostream.h"
+ 
+ 
+ namespace klee {
+ Solver *constructSolverChain(Solver *coreSolver,
+                              std::string querySMT2LogPath,
+                              std::string baseSolverQuerySMT2LogPath,
+                              std::string queryKQueryLogPath,
+                              std::string baseSolverQueryKQueryLogPath) {
+   Solver *solver = coreSolver;
+   const time::Span minQueryTimeToLog(MinQueryTimeToLog);
+ 
+   if (QueryLoggingOptions.isSet(SOLVER_KQUERY)) {
+     solver = createKQueryLoggingSolver(solver, baseSolverQueryKQueryLogPath, minQueryTimeToLog, LogTimedOutQueries);
+     klee_message("Logging queries that reach solver in .kquery format to %s\n",
+                  baseSolverQueryKQueryLogPath.c_str());
+   }
+ 
+   if (QueryLoggingOptions.isSet(SOLVER_SMTLIB)) {
+     solver = createSMTLIBLoggingSolver(solver, baseSolverQuerySMT2LogPath, minQueryTimeToLog, LogTimedOutQueries);
+     klee_message("Logging queries that reach solver in .smt2 format to %s\n",
+                  baseSolverQuerySMT2LogPath.c_str());
+   }
+ 
+   if (UseAssignmentValidatingSolver)
+     solver = createAssignmentValidatingSolver(solver);
+ 
+   if (UseFastCexSolver)
+     solver = createFastCexSolver(solver);
+ 
+-  if (UseCexCache)
++  if (UseCexCache) {
++    llvm::errs() << "Using caching cex solver\n";
+     solver = createCexCachingSolver(solver);
++  }
+ 
+   if (UseBranchCache)
+     solver = createCachingSolver(solver);
+ 
+   if (UseIndependentSolver)
+     solver = createIndependentSolver(solver);
+ 
+   if (DebugValidateSolver)
+     solver = createValidatingSolver(solver, coreSolver);
+ 
+   if (QueryLoggingOptions.isSet(ALL_KQUERY)) {
+     solver = createKQueryLoggingSolver(solver, queryKQueryLogPath, minQueryTimeToLog, LogTimedOutQueries);
+     klee_message("Logging all queries in .kquery format to %s\n",
+                  queryKQueryLogPath.c_str());
+   }
+ 
+   if (QueryLoggingOptions.isSet(ALL_SMTLIB)) {
+     solver = createSMTLIBLoggingSolver(solver, querySMT2LogPath, minQueryTimeToLog, LogTimedOutQueries);
+     klee_message("Logging all queries in .smt2 format to %s\n",
+                  querySMT2LogPath.c_str());
+   }
+   if (DebugCrossCheckCoreSolverWith != NO_SOLVER) {
+     Solver *oracleSolver = createCoreSolver(DebugCrossCheckCoreSolverWith);
+     solver = createValidatingSolver(/*s=*/solver, /*oracle=*/oracleSolver);
+   }
+ 
+   return solver;
+ }
+ }
+diff --git a/lib/Expr/Assigment.cpp b/lib/Expr/Assigment.cpp
+index d788785..148598f 100644
+--- a/lib/Expr/Assigment.cpp
++++ b/lib/Expr/Assigment.cpp
+@@ -1,42 +1,67 @@
+ //===-- Assignment.cpp ----------------------------------------------------===//
+ //
+ //                     The KLEE Symbolic Virtual Machine
+ //
+ // This file is distributed under the University of Illinois Open Source
+ // License. See LICENSE.TXT for details.
+ //
+ //===----------------------------------------------------------------------===//
+ #include "klee/util/Assignment.h"
+ namespace klee {
+ 
+ void Assignment::dump() {
+   if (bindings.size() == 0) {
+     llvm::errs() << "No bindings\n";
+     return;
+   }
+   for (bindings_ty::iterator i = bindings.begin(), e = bindings.end(); i != e;
+        ++i) {
+-    llvm::errs() << (*i).first->name << "\n[";
++    llvm::errs() << (*i).first->name << ": [";
+     for (int j = 0, k = (*i).second.size(); j < k; ++j)
+-      llvm::errs() << (int)(*i).second[j] << ",";
+-    llvm::errs() << "]\n";
++      llvm::errs() << (int)(*i).second[j] << ((j + 1 < k) ? "," : "");
++    llvm::errs() << "], ";
+   }
++  llvm::errs() << "\n";
++}
++
++void Assignment::write(llvm::raw_ostream &os) {
++  os << "{ ";
++
++  if (bindings.size() == 0) {
++    os << "}";
++    return;
++  }
++
++  size_t num = 0;
++  for (bindings_ty::iterator i = bindings.begin(), e = bindings.end(); i != e;
++       ++i) {
++    ++num;
++    os << "\"" << (*i).first->name << "\": [";
++    for (int j = 0, k = (*i).second.size(); j < k; ++j)
++      os << (int)(*i).second[j] << ((j + 1 < k) ? ", " : "");
++    
++    os << "]";
++    if (num != bindings.size())
++      os << ", ";
++  }
++  
++  os << " }";
+ }
+ 
+ void Assignment::createConstraintsFromAssignment(
+     std::vector<ref<Expr> > &out) const {
+   assert(out.size() == 0 && "out should be empty");
+   for (bindings_ty::const_iterator it = bindings.begin(), ie = bindings.end();
+        it != ie; ++it) {
+     const Array *array = it->first;
+     const std::vector<unsigned char> &values = it->second;
+     for (unsigned arrayIndex = 0; arrayIndex < array->size; ++arrayIndex) {
+       unsigned char value = values[arrayIndex];
+       out.push_back(EqExpr::create(
+           ReadExpr::create(UpdateList(array, 0),
+                            ConstantExpr::alloc(arrayIndex, array->getDomain())),
+           ConstantExpr::alloc(value, array->getRange())));
+     }
+   }
+ }
+ }
+diff --git a/lib/Solver/CexCachingSolver.cpp b/lib/Solver/CexCachingSolver.cpp
+index d2e080d..d96b41d 100644
+--- a/lib/Solver/CexCachingSolver.cpp
++++ b/lib/Solver/CexCachingSolver.cpp
+@@ -1,388 +1,500 @@
+ //===-- CexCachingSolver.cpp ----------------------------------------------===//
+ //
+ //                     The KLEE Symbolic Virtual Machine
+ //
+ // This file is distributed under the University of Illinois Open Source
+ // License. See LICENSE.TXT for details.
+ //
+ //===----------------------------------------------------------------------===//
+ 
+ #include "klee/Solver.h"
+ 
+ #include "klee/Constraints.h"
+ #include "klee/Expr.h"
+ #include "klee/Internal/ADT/MapOfSets.h"
+ #include "klee/Internal/Support/ErrorHandling.h"
+ #include "klee/OptionCategories.h"
+ #include "klee/SolverImpl.h"
+ #include "klee/SolverStats.h"
+ #include "klee/TimerStatIncrementer.h"
+ #include "klee/util/Assignment.h"
+ #include "klee/util/ExprUtil.h"
+ #include "klee/util/ExprVisitor.h"
++#include "klee/util/ExprSMTLIBPrinter.h"
+ 
+ #include "llvm/Support/CommandLine.h"
+ 
++#include <fstream>
++#include <string>
++#include <set>
++#include <unordered_map>
++#include <chrono>
++
+ using namespace klee;
+ using namespace llvm;
+ 
+ namespace {
+ cl::opt<bool> DebugCexCacheCheckBinding(
+     "debug-cex-cache-check-binding", cl::init(false),
+     cl::desc("Debug the correctness of the counterexample "
+              "cache assignments (default=false)"),
+     cl::cat(SolvingCat));
+ 
+ cl::opt<bool>
+     CexCacheTryAll("cex-cache-try-all", cl::init(false),
+                    cl::desc("Try substituting all counterexamples before "
+                             "asking the SMT solver (default=false)"),
+                    cl::cat(SolvingCat));
+ 
+ cl::opt<bool>
+     CexCacheSuperSet("cex-cache-superset", cl::init(false),
+                      cl::desc("Try substituting SAT superset counterexample "
+                               "before asking the SMT solver (default=false)"),
+                      cl::cat(SolvingCat));
+ 
+ cl::opt<bool> CexCacheExperimental(
+     "cex-cache-exp", cl::init(false),
+     cl::desc("Optimization for validity queries (default=false)"),
+     cl::cat(SolvingCat));
+ 
++cl::opt<bool> JKBenchmark(
++    "jk-benchmark", cl::init(false),
++    cl::desc("Benchmark the assignment evaluator"));
++
++cl::opt<std::string> JK_InputName("jk-input-name", cl::init(""), cl::Hidden);
+ } // namespace
+ 
+ ///
+ 
+ typedef std::set< ref<Expr> > KeyType;
+ 
+ struct AssignmentLessThan {
+   bool operator()(const Assignment *a, const Assignment *b) const {
+     return a->bindings < b->bindings;
+   }
+ };
+ 
+ 
+ class CexCachingSolver : public SolverImpl {
+   typedef std::set<Assignment*, AssignmentLessThan> assignmentsTable_ty;
+ 
+   Solver *solver;
+   
+   MapOfSets<ref<Expr>, Assignment*> cache;
+   // memo table
+   assignmentsTable_ty assignmentsTable;
+ 
+   bool searchForAssignment(KeyType &key, 
+-                           Assignment *&result);
++                           Assignment *&result, const Query &q);
+   
+   bool lookupAssignment(const Query& query, KeyType &key, Assignment *&result);
+ 
+   bool lookupAssignment(const Query& query, Assignment *&result) {
+     KeyType key;
+     return lookupAssignment(query, key, result);
+   }
+ 
+   bool getAssignment(const Query& query, Assignment *&result);
+   
+ public:
+   CexCachingSolver(Solver *_solver) : solver(_solver) {}
+   ~CexCachingSolver();
+   
+   bool computeTruth(const Query&, bool &isValid);
+   bool computeValidity(const Query&, Solver::Validity &result);
+   bool computeValue(const Query&, ref<Expr> &result);
+   bool computeInitialValues(const Query&,
+                             const std::vector<const Array*> &objects,
+                             std::vector< std::vector<unsigned char> > &values,
+                             bool &hasSolution);
+   SolverRunStatus getOperationStatusCode();
+   char *getConstraintLog(const Query& query);
+   void setCoreSolverTimeout(time::Span timeout);
+ };
+ 
+ ///
+ 
+ struct NullAssignment {
+   bool operator()(Assignment *a) const { return !a; }
+ };
+ 
+ struct NonNullAssignment {
+   bool operator()(Assignment *a) const { return a!=0; }
+ };
+ 
+ struct NullOrSatisfyingAssignment {
+   KeyType &key;
+   
+   NullOrSatisfyingAssignment(KeyType &_key) : key(_key) {}
+ 
+   bool operator()(Assignment *a) const { 
+     return !a || a->satisfies(key.begin(), key.end()); 
+   }
+ };
+ 
++volatile unsigned long dummy;
++
++struct QueryAssignmentCache {
++  std::unordered_map<std::string, std::set<std::string>> cache;
++  std::unordered_map<std::string, unsigned long long> times;
++  std::unordered_map<std::string, unsigned long> evals;
++
++
++  void addAssignment(const std::string &query, const std::string &assignment,
++                     Assignment *a, KeyType &key) {
++    bool old = cache[query].count(assignment) > 0;
++    cache[query].insert(assignment);
++    llvm::errs() << "\n\n~~~~Add assignment\n\n";
++
++    if (JKBenchmark && !old) {
++      const unsigned numIters = 100000;
++      using namespace std::chrono;
++      const auto startTime = steady_clock::now();
++
++      unsigned long evals = 0;
++      for (unsigned iter = 0; iter != numIters; ++iter) {
++        evals += a->satisfies(key.begin(), key.end());
++        dummy = evals;
++      }
++
++      const auto endTime = steady_clock::now();
++      const auto ms = duration_cast<milliseconds>(endTime - startTime);
++      times[query] += ms.count();
++    }
++  }
++
++  ~QueryAssignmentCache() {
++    llvm::errs() << "\n$$$ DTOR" << " cache size: " << cache.size() << " times: " << times.size() << "\n";
++    size_t i = 0;
++    for (auto &QAS : cache) {
++      if (QAS.second.size() < 20)
++        continue;
++
++      std::string toPrint;
++      llvm::raw_string_ostream os(toPrint);
++
++      os << "; QueryHash " << std::hash<std::string>{}(QAS.first) << "\n"
++         << QAS.first << "\n; Assignments " << times[QAS.first] << " ms";
++
++      for (auto& A : QAS.second)
++        os << "\n; " << A;
++
++      os << "\n";
++      os.flush();
++      
++      std::string filename = "./queries/" + JK_InputName + ".q" + std::to_string(i++) + ".smt2";
++      std::ofstream ofs(filename);
++      ofs << toPrint;
++      ofs.flush();
++      llvm::errs() << "Saved " << filename << " time " << times[QAS.first] << " ms\n";
++    }
++  }
++};
++
++
+ /// searchForAssignment - Look for a cached solution for a query.
+ ///
+ /// \param key - The query to look up.
+ /// \param result [out] - The cached result, if the lookup is succesful. This is
+ /// either a satisfying assignment (for a satisfiable query), or 0 (for an
+ /// unsatisfiable query).
+ /// \return - True if a cached result was found.
+-bool CexCachingSolver::searchForAssignment(KeyType &key, Assignment *&result) {
++bool CexCachingSolver::searchForAssignment(KeyType &key, Assignment *&result, const Query &q) {
++  llvm::errs() << "CexCachingSolver::searchForAssignment\n";
++
++  static QueryAssignmentCache queryAssignmentCache;
++  std::string query;
++  llvm::raw_string_ostream os(query);
++  ExprSMTLIBPrinter printer;
++  printer.setOutput(os);
++
++  printer.setQuery(q);
++  printer.generateOutput();
++  os.flush();
++
+   Assignment * const *lookup = cache.lookup(key);
+   if (lookup) {
+     result = *lookup;
+     return true;
+   }
+ 
+   if (CexCacheTryAll) {
+     // Look for a satisfying assignment for a superset, which is trivially an
+     // assignment for any subset.
+     Assignment **lookup = 0;
+     if (CexCacheSuperSet)
+       lookup = cache.findSuperset(key, NonNullAssignment());
+ 
+     // Otherwise, look for a subset which is unsatisfiable, see below.
+     if (!lookup) 
+       lookup = cache.findSubset(key, NullAssignment());
+ 
+     // If either lookup succeeded, then we have a cached solution.
+     if (lookup) {
+       result = *lookup;
+       return true;
+-    }
++    }    
+ 
+     // Otherwise, iterate through the set of current assignments to see if one
+     // of them satisfies the query.
+     for (assignmentsTable_ty::iterator it = assignmentsTable.begin(), 
+            ie = assignmentsTable.end(); it != ie; ++it) {
+       Assignment *a = *it;
++      
++      std::string as;
++      llvm::raw_string_ostream as_os(as);
++      a->write(as_os);
++      as_os.flush();
++      queryAssignmentCache.addAssignment(query, as, a, key);
++      // llvm::errs() << "\n";
+       if (a->satisfies(key.begin(), key.end())) {
+         result = a;
+         return true;
+       }
+     }
+   } else {
+     // FIXME: Which order? one is sure to be better.
+ 
+     // Look for a satisfying assignment for a superset, which is trivially an
+     // assignment for any subset.
+     Assignment **lookup = 0;
+     if (CexCacheSuperSet)
+       lookup = cache.findSuperset(key, NonNullAssignment());
+ 
+     // Otherwise, look for a subset which is unsatisfiable -- if the subset is
+     // unsatisfiable then no additional constraints can produce a valid
+     // assignment. While searching subsets, we also explicitly the solutions for
+     // satisfiable subsets to see if they solve the current query and return
+     // them if so. This is cheap and frequently succeeds.
+     if (!lookup) 
+       lookup = cache.findSubset(key, NullOrSatisfyingAssignment(key));
+ 
+     // If either lookup succeeded, then we have a cached solution.
+     if (lookup) {
+       result = *lookup;
+       return true;
+     }
+   }
+   
+   return false;
+ }
+ 
+ /// lookupAssignment - Lookup a cached result for the given \arg query.
+ ///
+ /// \param query - The query to lookup.
+ /// \param key [out] - On return, the key constructed for the query.
+ /// \param result [out] - The cached result, if the lookup is succesful. This is
+ /// either a satisfying assignment (for a satisfiable query), or 0 (for an
+ /// unsatisfiable query).
+ /// \return True if a cached result was found.
+ bool CexCachingSolver::lookupAssignment(const Query &query, 
+                                         KeyType &key,
+                                         Assignment *&result) {
++  llvm::errs() << "CexCachingSolver::lookupAssignment\n";
+   key = KeyType(query.constraints.begin(), query.constraints.end());
+   ref<Expr> neg = Expr::createIsZero(query.expr);
+   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(neg)) {
+     if (CE->isFalse()) {
+       result = (Assignment*) 0;
+       ++stats::queryCexCacheHits;
+       return true;
+     }
+   } else {
+     key.insert(neg);
+   }
+ 
+-  bool found = searchForAssignment(key, result);
++
++  bool found = searchForAssignment(key, result, query);
+   if (found)
+     ++stats::queryCexCacheHits;
+   else ++stats::queryCexCacheMisses;
+     
+   return found;
+ }
+ 
+ bool CexCachingSolver::getAssignment(const Query& query, Assignment *&result) {
++  llvm::errs() << "CexCachingSolver::getAssignment " << JK_InputName << "\n";
++  query.dump();
++  ExprSMTLIBPrinter printer;
++  printer.setOutput(llvm::errs());
++  printer.setQuery(query);
++  printer.generateOutput();
++
+   KeyType key;
+-  if (lookupAssignment(query, key, result))
++  if (lookupAssignment(query, key, result)) {
++    llvm::errs() << "\tlooked up assignment:\n";
++    result->write(llvm::errs());
++    llvm::errs() << "\n";
+     return true;
++  }
+ 
+   std::vector<const Array*> objects;
+   findSymbolicObjects(key.begin(), key.end(), objects);
+ 
+   std::vector< std::vector<unsigned char> > values;
+   bool hasSolution;
+   if (!solver->impl->computeInitialValues(query, objects, values, 
+                                           hasSolution))
+     return false;
+     
+   Assignment *binding;
+   if (hasSolution) {
+     binding = new Assignment(objects, values);
+ 
+     // Memoize the result.
+     std::pair<assignmentsTable_ty::iterator, bool>
+       res = assignmentsTable.insert(binding);
+     if (!res.second) {
+       delete binding;
+       binding = *res.first;
+     }
+     
+     if (DebugCexCacheCheckBinding)
+       if (!binding->satisfies(key.begin(), key.end())) {
+         query.dump();
+         binding->dump();
+         klee_error("Generated assignment doesn't match query");
+       }
+   } else {
+     binding = (Assignment*) 0;
+   }
+   
+   result = binding;
+   cache.insert(key, binding);
++  if (binding) {
++    llvm::errs() << "CEXCS: Insert assignment:\n";
++    binding->dump();
++  }
+ 
+   return true;
+ }
+ 
+ ///
+ 
+ CexCachingSolver::~CexCachingSolver() {
+   cache.clear();
+   delete solver;
+   for (assignmentsTable_ty::iterator it = assignmentsTable.begin(), 
+          ie = assignmentsTable.end(); it != ie; ++it)
+     delete *it;
+ }
+ 
+ bool CexCachingSolver::computeValidity(const Query& query,
+                                        Solver::Validity &result) {
++  llvm::errs() << "CexCachingSolver::computeValidity\n";
+   TimerStatIncrementer t(stats::cexCacheTime);
+   Assignment *a;
+   if (!getAssignment(query.withFalse(), a))
+     return false;
+   assert(a && "computeValidity() must have assignment");
+   ref<Expr> q = a->evaluate(query.expr);
+   assert(isa<ConstantExpr>(q) && 
+          "assignment evaluation did not result in constant");
+ 
+   if (cast<ConstantExpr>(q)->isTrue()) {
+     if (!getAssignment(query, a))
+       return false;
+     result = !a ? Solver::True : Solver::Unknown;
+   } else {
+     if (!getAssignment(query.negateExpr(), a))
+       return false;
+     result = !a ? Solver::False : Solver::Unknown;
+   }
+   
+   return true;
+ }
+ 
+ bool CexCachingSolver::computeTruth(const Query& query,
+                                     bool &isValid) {
++  llvm::errs() << "CexCachingSolver::computeTruth\n";
+   TimerStatIncrementer t(stats::cexCacheTime);
+ 
+   // There is a small amount of redundancy here. We only need to know
+   // truth and do not really need to compute an assignment. This means
+   // that we could check the cache to see if we already know that
+   // state ^ query has no assignment. In that case, by the validity of
+   // state, we know that state ^ !query must have an assignment, and
+   // so query cannot be true (valid). This does get hits, but doesn't
+   // really seem to be worth the overhead.
+ 
+   if (CexCacheExperimental) {
+     Assignment *a;
+     if (lookupAssignment(query.negateExpr(), a) && !a)
+       return false;
+   }
+ 
+   Assignment *a;
+   if (!getAssignment(query, a))
+     return false;
+ 
+   isValid = !a;
+ 
+   return true;
+ }
+ 
+ bool CexCachingSolver::computeValue(const Query& query,
+                                     ref<Expr> &result) {
++  llvm::errs() << "CexCachingSolver::computeValue\n";
+   TimerStatIncrementer t(stats::cexCacheTime);
+ 
+   Assignment *a;
+   if (!getAssignment(query.withFalse(), a))
+     return false;
+   assert(a && "computeValue() must have assignment");
+   result = a->evaluate(query.expr);  
+   assert(isa<ConstantExpr>(result) && 
+          "assignment evaluation did not result in constant");
+   return true;
+ }
+ 
+ bool 
+ CexCachingSolver::computeInitialValues(const Query& query,
+                                        const std::vector<const Array*> 
+                                          &objects,
+                                        std::vector< std::vector<unsigned char> >
+                                          &values,
+                                        bool &hasSolution) {
++  llvm::errs() << "CexCachingSolver::computeInitialValues\n";
+   TimerStatIncrementer t(stats::cexCacheTime);
+   Assignment *a;
+   if (!getAssignment(query, a))
+     return false;
+   hasSolution = !!a;
+   
+   if (!a)
+     return true;
+ 
+   // FIXME: We should use smarter assignment for result so we don't
+   // need redundant copy.
+   values = std::vector< std::vector<unsigned char> >(objects.size());
+   for (unsigned i=0; i < objects.size(); ++i) {
+     const Array *os = objects[i];
+     Assignment::bindings_ty::iterator it = a->bindings.find(os);
+     
+     if (it == a->bindings.end()) {
+       values[i] = std::vector<unsigned char>(os->size, 0);
+     } else {
+       values[i] = it->second;
+     }
+   }
+   
+   return true;
+ }
+ 
+ SolverImpl::SolverRunStatus CexCachingSolver::getOperationStatusCode() {
+   return solver->impl->getOperationStatusCode();
+ }
+ 
+ char *CexCachingSolver::getConstraintLog(const Query& query) {
+   return solver->impl->getConstraintLog(query);
+ }
+ 
+ void CexCachingSolver::setCoreSolverTimeout(time::Span timeout) {
+   solver->impl->setCoreSolverTimeout(timeout);
+ }
+ 
+ ///
+ 
+ Solver *klee::createCexCachingSolver(Solver *_solver) {
+   return new Solver(new CexCachingSolver(_solver));
+ }

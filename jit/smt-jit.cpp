@@ -328,7 +328,8 @@ int parseSmtAndEval(StringRef filename, SmtJit &jit,
 
     llvm::outs() << "Total models: " << totalModels << " / "
                  << BenchmarkIterations << " iterations\n";
-    llvm::outs() << "[BENCHMARK] Time " << ms.count() << " ms\n";
+    llvm::outs() << "[BENCHMARK] Time " << ms.count() << " ms klee "
+                 << parser.getKleeTime() << "\n";
   }
   bv_reset_context();
 
