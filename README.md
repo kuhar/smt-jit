@@ -134,6 +134,39 @@ entry:
 
 ## 6. Experimental Evaluation
 
+| Benchmark | SMT-JIT [ms] | KLEE [ms] |
+|-----------|--------------|-----------|
+| echo.q0   | 384          | 13748     |
+| echo.q10  | 258          | 9039      |
+| echo.q11  | 244          | 3504      |
+| echo.q12  | 244          | 2945      |
+| echo.q13  | 257          | 3476      |
+| echo.q14  | 236          | 1029      |
+| echo.q15  | 216          | 956       |
+| echo.q16  | 153          | 780       |
+| echo.q17  | 287          | 1166      |
+| echo.q18  | 301          | 2099      |
+| echo.q1   | 94           | 6049      |
+| echo.q20  | 280          | 1490      |
+| echo.q21  | 222          | 3315      |
+| echo.q22  | 266          | 896       |
+| echo.q23  | 317          | 1231      |
+| echo.q24  | 202          | 949       |
+| echo.q25  | 365          | 1392      |
+| echo.q26  | 272          | 1113      |
+| echo.q27  | 168          | 822       |
+| echo.q28  | 247          | 3682      |
+| echo.q29  | 178          | 831       |
+| echo.q2   | 83           | 5862      |
+| echo.q30  | 193          | 2539      |
+| echo.q3   | 60           | 5548      |
+| echo.q4   | 229          | 3444      |
+| echo.q5   | 71           | 5793      |
+| echo.q6   | 349          | 1348      |
+| echo.q7   | 335          | 1317      |
+| echo.q8   | 330          | 3604      |
+| echo.q9   | 262          | 1108      |
+
 ## 7. Related Work
 To author's best knowledge, there are no previous 'true' JIT compilers for SMT; there are a few tools that attempt to translate SMT formulas to C or C++:
 * goSAT \[1\] focuses on Floating Point formulas and translates them C code, trying to use native floating point arithmetic.
