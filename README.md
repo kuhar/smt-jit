@@ -1,3 +1,4 @@
+
 SMT-JIT
 =======
 ### A toy Just-In-Time Compiler for evaluating SMT formulas (QF_AUFBV)
@@ -133,9 +134,17 @@ entry:
 ```
 
 ## 6. Experimental Evaluation
+The experiments were performed on the Solver queries dumped from the KLEE's CexCachingSolver, using the `klee/klee.diff` patch.  Two coreutils programs, `cat` and `echo`, were run under the KLEE interpreter mode using the commands in `klee/runs.txt.`. 
+
+To check if an assignment is a model, KLEE performs a walk over the expression DAG and recursively calculates the final evaluation result. The expression are already in-memory, and do not need to be converted to any intermediate form before evaluation. The results for SMT-JIT do not include the parsing time, as it would not be necessary if SMT-JIT was invoked from inside KLEE.
+
+For every query, every assignment was evaluated exactly 100,000 times. To keep implementation simple, in the case of KLEE, each single assignment was attempted 100,000 times at once, while the SMT-JIT benchmarks performed 100,000 loops over all assignment. The authors suspect that this may have helped the KLEE evaluator, e.g., because of easier branch prediction for consecutive evaluation.
+
+The evaluation was performed on dual-socket workstation with the Intel Xeon E5-2680 CPU with 96 GiB of RAM, running on Ubuntu 18.04. The system was using the `performance` CPU governor mode. All programs ware compiled in the `Release` cmake mode with clang-6.0 as the C and C++ compiler and lld-6.0 as the linker. Note that every experiment was run only once, thus the reported times should be treated with necessary caution.
+All the benchmark files are available under `jit/inputs`.
 
 | Benchmark | SMT-JIT [ms] | KLEE [ms] |
-|-----------|--------------|-----------|
+|-----------|-------------:|----------:|
 | echo.q0   | 384          | 13748     |
 | echo.q10  | 258          | 9039      |
 | echo.q11  | 244          | 3504      |
