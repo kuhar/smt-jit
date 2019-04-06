@@ -368,8 +368,8 @@ Function *Smt2LLVM::lowerAssert(unsigned idx, const Twine &name) {
           Value *constant = stackPop();
           stackPush(lowerBVMk(constant, width, parent.getChild(1).getString()));
         } else if (realFn == "extract") {
-          Value *to = stackPop();
           Value *from = stackPop();
+          Value *to = stackPop();
           Value *bv = stackPop();
           stackPush(lowerExtract(bv, from, to));
         } else if (realFn == "zero_extend") {

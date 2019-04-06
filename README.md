@@ -122,7 +122,7 @@ In extreme cases, this optimization pipeline can even prove some of the input SM
 ```
 (set-logic QF_AUFBV )
 (declare-fun arg01 () (Array (_ BitVec 32) (_ BitVec 8) ) )
-(assert (let ( (?B1 (select arg01 (_ bv1 32) ) ) ) (let ( (?B2 ((_ extract 7 0) ((_ sign_extend 24) ?B1 ) ) ) ) (and (and (and (= (_ bv101 8) ?B2 ) (= false (= (_ bv0 8) ?B1 ) ) ) (= false (= (_ bv45 8) ?B1 ) ) ) (= false (= (_ bv98 8) ?B2 ) ) ) ) ) )
+(assert (let ( (?B1 (select arg01 (_ bv1 32) ) ) ) (let ( (?B2 ((_ extract 0 7) ((_ sign_extend 24) ?B1 ) ) ) ) (and (and (and (= (_ bv101 8) ?B2 ) (= false (= (_ bv0 8) ?B1 ) ) ) (= false (= (_ bv45 8) ?B1 ) ) ) (= false (= (_ bv98 8) ?B2 ) ) ) ) ) )
 (check-sat)
 (exit)
 ```
