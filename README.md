@@ -1,13 +1,14 @@
 
+
 SMT-JIT
 =======
 ### A toy Just-In-Time Compiler for evaluating SMT formulas (QF_AUFBV)
 ### [CS 842] Final Course Project
 ---
 
-This project implements a simple JIT compiler for the QF_AUFBV subset of SMT emitted by the KLEE symbolic execution engine, including unbounded arrays of bitvectors and fixed-width bitvectors. *Smt-jit* uses the LLVM's ORCv2 API for jitting.
+This project implements a simple JIT compiler for the QF_AUFBV subset of SMT emitted by the KLEE symbolic execution engine, including unbounded arrays of bitvectors and fixed-width bitvectors. SMT-JIT uses the LLVM's ORCv2 API for jitting.
 
-Given an SMT formula and a bunch of _full_ assignments in the SMT-LIB2 format, *smt-jit* will compile the SMT formula to LLVM IR, emit x86-64 machine code, and evalute the formula with the assignments. The main motivation is to be able to evaluate or fuzz SMT formulas before quering the main SMT solver for statisfability, e.g., in the KLEE's CexCachingSolver or Z3's local search phase.
+Given an SMT formula and a bunch of _full_ assignments in the SMT-LIB2 format, SMT-JIT will compile the SMT formula to LLVM IR, emit x86-64 machine code, and evalute the formula with the assignments. The main motivation is to be able to evaluate or fuzz SMT formulas before querying the main SMT solver for satisfiability, e.g., in the KLEE's CexCachingSolver or Z3's local search phase.
 
 Example:
 ```
@@ -135,13 +136,13 @@ entry:
 ## 6. Experimental Evaluation
 
 ## 7. Related Work
-To author's best knowledge, there are no previous 'true' JIT compilers for SMT. However, there are a few tools that attempt to translate SMT formulas to C or C++:
-* goSAT [[1]](1) focuses on Floating Point formulas and translates them C code, trying to use native floating point arithmetic.
-* JIT Fuzzing Solver [[2]](2) translates SMT formulas into C++ code, and fuzzes them with the AFL fuzzer in hope to find satisfying assignments. In contrast to SMT-JIT, it does not support bitvectors wider than machine integers (> 64 bits).
-* SMTLib2C [[3]](3) translates SMT formulas to C or Lustre code. 
+To author's best knowledge, there are no previous 'true' JIT compilers for SMT; there are a few tools that attempt to translate SMT formulas to C or C++:
+* goSAT \[1\] focuses on Floating Point formulas and translates them C code, trying to use native floating point arithmetic.
+* JIT Fuzzing Solver \[2\] translates SMT formulas into C++ code, and fuzzes them with the AFL fuzzer in hope to find satisfying assignments. In contrast to SMT-JIT, it does not support bitvectors wider than machine integers (> 64 bits).
+* SMTLib2C \[3\] translates SMT formulas to C or Lustre code. 
 
 ## References
-[1]: [M. Ammar Ben Khadra](https://dblp1.uni-trier.de/pers/hd/k/Khadra:M=_Ammar_Ben), [Dominik Stoffel](https://dblp1.uni-trier.de/pers/hd/s/Stoffel:Dominik), [Wolfgang Kunz](https://dblp1.uni-trier.de/pers/hd/k/Kunz:Wolfgang):  
+\[1\]: [M. Ammar Ben Khadra](https://dblp1.uni-trier.de/pers/hd/k/Khadra:M=_Ammar_Ben), [Dominik Stoffel](https://dblp1.uni-trier.de/pers/hd/s/Stoffel:Dominik), [Wolfgang Kunz](https://dblp1.uni-trier.de/pers/hd/k/Kunz:Wolfgang):
 goSAT:  Floating-point  satisfiability  as  global  optimization.  [FMCAD  2017](https://dblp1.uni-trier.de/db/conf/fmcad/fmcad2017.html#KhadraSK17)
-[2]: [D. Liew](https://danliew.co.uk/about/) JIT Fuzzing Solver, https://github.com/delcypher/jfs
-[3]: [A. Katis](https://dblp1.uni-trier.de/pers/hd/k/Katis:Andreas) SMTLib2C, https://github.com/andrewkatis/SMTLib2C
+\[2\]: [D. Liew](https://danliew.co.uk/about/): JIT Fuzzing Solver, https://github.com/delcypher/jfs
+\[3\]: [A. Katis](https://dblp1.uni-trier.de/pers/hd/k/Katis:Andreas): SMTLib2C, https://github.com/andrewkatis/SMTLib2C
