@@ -1,5 +1,3 @@
-
-
 SMT-JIT
 =======
 ### A toy Just-In-Time Compiler for evaluating SMT formulas (QF_AUFBV)
