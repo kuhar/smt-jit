@@ -51,12 +51,13 @@ Compilation of the above formula and evaluation over 1 milion full assignments t
 
 ## Table of Contents
 
-1. [High-level Overview of the SMT-JIT Architecture](#1.-SMT-JIT-Architecture)
-2. [Benchmark Collection](#2.-Benchmark-Collection)
-3. [bvlib: A custom Mixed-Precision BitVector library](#3.-Mixed-Precision-BitVector-Library)
-4. [Handling of BitVector Arrays](#4.-BitVector-Array-Handling)
-5. [SMT-JIT Optimization Pipeline](#5.-SMT-JIT-Optimization-Pipeline)
-6. [Experimental Evaluation](#6.-Experimental-Evaluation)
+1. [High-level Overview of the SMT-JIT Architecture](#1-smt-jit-architecture)
+2. [Benchmark Collection](#2-benchmark-collection)
+3. [bvlib: A custom Mixed-Precision BitVector library](#3-mixed-precision-bitvector-library)
+4. [Handling of BitVector Arrays](#4-bitvector-array-handling)
+5. [SMT-JIT Optimization Pipeline](#5-smt-jit-optimization-pipeline)
+6. [Experimental Evaluation](#6-experimental-evaluation)
+7. [Related Work](#7-related-work)
 
 ## 1. SMT-JIT Architecture
 
@@ -144,5 +145,7 @@ To author's best knowledge, there are no previous 'true' JIT compilers for SMT; 
 ## References
 \[1\]: [M. Ammar Ben Khadra](https://dblp1.uni-trier.de/pers/hd/k/Khadra:M=_Ammar_Ben), [Dominik Stoffel](https://dblp1.uni-trier.de/pers/hd/s/Stoffel:Dominik), [Wolfgang Kunz](https://dblp1.uni-trier.de/pers/hd/k/Kunz:Wolfgang):
 goSAT:  Floating-point  satisfiability  as  global  optimization.  [FMCAD  2017](https://dblp1.uni-trier.de/db/conf/fmcad/fmcad2017.html#KhadraSK17)
+
 \[2\]: [D. Liew](https://danliew.co.uk/about/): JIT Fuzzing Solver, https://github.com/delcypher/jfs
+
 \[3\]: [A. Katis](https://dblp1.uni-trier.de/pers/hd/k/Katis:Andreas): SMTLib2C, https://github.com/andrewkatis/SMTLib2C
