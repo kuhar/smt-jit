@@ -137,6 +137,7 @@ entry:
 The experiments were performed on the Solver queries dumped from the KLEE's CexCachingSolver, using the `klee/klee.diff` patch.  Two coreutils programs, `cat` and `echo`, were run under the KLEE interpreter mode using the commands in `klee/runs.txt.`. 
 
 To check if an assignment is a model, KLEE performs a walk over the expression DAG and recursively calculates the final evaluation result. The expression are already in-memory, and do not need to be converted to any intermediate form before evaluation. The results for SMT-JIT do not include the parsing time, as it would not be necessary if SMT-JIT was invoked from inside KLEE.
+SMT-JIT took less than a millisecond to compile each SMT formula.
 
 For every query, every assignment was evaluated exactly 100,000 times. To keep implementation simple, in the case of KLEE, each single assignment was attempted 100,000 times at once, while the SMT-JIT benchmarks performed 100,000 loops over all assignment. The authors suspect that this may have helped the KLEE evaluator, e.g., because of easier branch prediction for consecutive evaluation.
 
