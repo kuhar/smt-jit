@@ -99,7 +99,8 @@ public:
         OptimizeLayer(ES, CompileLayer, optimizeModule), DL(std::move(DL)),
         Mangle(ES, this->DL), Ctx(llvm::make_unique<LLVMContext>()) {
     ES.getMainJITDylib().setGenerator(
-        cantFail(orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(DL)));
+        cantFail(orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+            DL.getGlobalPrefix())));
   }
 
   static Expected<std::unique_ptr<SmtJit>> Create() {

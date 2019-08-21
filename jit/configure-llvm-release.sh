@@ -1,14 +1,17 @@
 #! /bin/sh
 
+LLVM_DIR=$(readlink -f "$1")
+BUILD_DIR=$(readlink -f "$2")
 set -e
-mkdir -p build-llvm-release
-cd build-llvm-release
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
 
-cmake ../llvm-project/llvm -GNinja -DCMAKE_BUILD_TYPE=Release \
+cmake "$LLVM_DIR"/llvm -GNinja -DCMAKE_BUILD_TYPE=Release \
 			-DLLVM_ENABLE_PROJECTS='clang' \
 			-DLLVM_TARGETS_TO_BUILD='X86' \
 			-DLLVM_OPTIMIZED_TABLEGEN=1 \
 			-DLLVM_ENABLE_LLD=1 \
-			-DCMAKE_CXX_COMPILER=clang++-6.0 -DCMAKE_C_COMPILER=clang-6.0 \
+      -DLLVM_USE_SPLIT_DWARF=1 \
+			-DCMAKE_CXX_COMPILER=clang++-8 -DCMAKE_C_COMPILER=clang-8 \
 			-DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
 			-DCMAKE_INSTALL_PREFIX=./run

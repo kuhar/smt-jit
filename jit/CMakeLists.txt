@@ -23,6 +23,11 @@ add_compile_options(-fno-rtti)
 add_compile_options(-fno-exceptions)
 add_compile_options(-march=native)
 
+option(SMTJIT_USE_SPLIT_DWARF "Use -gsplit-dwarf. Decreases linker pressure." OFF)
+if(SMTJIT_USE_SPLIT_DWARF)
+  add_definitions("-gsplit-dwarf")
+endif()
+
 if (SMTJIT_USE_LINKER)
   set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
   set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -fuse-ld=${SMTJIT_USE_LINKER}")
