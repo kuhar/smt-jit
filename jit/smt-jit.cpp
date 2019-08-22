@@ -15,8 +15,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 
-#include "llvm/IRReader/IRReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IRReader/IRReader.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -44,8 +44,10 @@
 #include "smtlib_parser.hpp"
 #include "smtlib_to_llvm.hpp"
 
-#include <cstdio>
+#include "z3.h"
+
 #include <chrono>
+#include <cstdio>
 
 #define DEBUG_TYPE "smt-jit"
 
@@ -170,10 +172,44 @@ void dummyFun() {}
 static bool doBVLibSanityCheck(SmtJit &jit);
 
 static int parseSmtAndEval(StringRef filename, SmtJit &jit,
-                            const llvm::Module &bvLibTemplate);
+                           const llvm::Module &bvLibTemplate);
 
 static bool models(smt_jit::SmtLibParser &parser, unsigned assignmentIdx,
                    int (*smtFunctionPtr)(bv_array **), bool verbose = false);
+
+static void error_handler(Z3_context c, Z3_error_code e) {
+  llvm::errs() << "\nIncorrect use of Z3\nError code: " << e << "\n";
+  llvm_unreachable("");
+}
+
+static Z3_context mk_context_custom(Z3_config cfg, Z3_error_handler err) {
+  Z3_context ctx;
+
+  Z3_set_param_value(cfg, "model", "true");
+  ctx = Z3_mk_context(cfg);
+  Z3_set_error_handler(ctx, err);
+
+  return ctx;
+}
+
+static Z3_solver mk_solver(Z3_context ctx) {
+  Z3_solver s = Z3_mk_solver(ctx);
+  Z3_solver_inc_ref(ctx, s);
+  return s;
+}
+
+static void del_solver(Z3_context ctx, Z3_solver s) {
+  Z3_solver_dec_ref(ctx, s);
+}
+
+static Z3_context mk_context() {
+  Z3_config cfg;
+  Z3_context ctx;
+  cfg = Z3_mk_config();
+  ctx = mk_context_custom(cfg, error_handler);
+  Z3_del_config(cfg);
+  return ctx;
+}
 
 int main(int argc, char **argv) {
   llvm::llvm_shutdown_obj shutdown;
@@ -193,6 +229,13 @@ int main(int argc, char **argv) {
   const std::string exeDir = exePathRef.substr(0, exePathRef.rfind('/')).str();
 
   llvm::errs() << "Running in directory: " << exeDir << "\n";
+
+  Z3_context ctx;
+  llvm::outs() << "\nZ3 simple_example\n";
+
+  ctx = mk_context();
+
+  Z3_del_context(ctx);
 
   auto errJit = SmtJit::Create();
   if (!errJit) {

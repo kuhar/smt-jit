@@ -1,6 +1,7 @@
 #! /bin/sh
 
-LLVM="$1"
+LLVM_DIR=$(readlink -f "$1")
+Z3_DIR=$(readlink -f "$2")
 
 set -e
 mkdir -p debug
@@ -12,4 +13,6 @@ cmake .. -GNinja -DCMAKE_BUILD_TYPE=Debug \
       -DCMAKE_CXX_COMPILER=clang++-8 \
       -DSMTJIT_USE_LINKER=lld-8 \
       -DSMTJIT_USE_SPLIT_DWARF=1 \
-      -DLLVM_DIR="$LLVM"
+      -DLLVM_DIR="$LLVM_DIR" \
+      -DZ3_ROOT="$Z3_DIR"
+
