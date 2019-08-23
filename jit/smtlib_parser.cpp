@@ -1,11 +1,87 @@
 #include "smtlib_parser.hpp"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
 
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
 
 namespace smt_jit {
+
+ZSmtLibParser::ZSmtLibParser(llvm::StringRef fileName, Z3_context ctx)
+    : m_zCtx(ctx) {
+  std::ifstream file(fileName.str());
+  if (file.bad()) {
+    llvm::errs() << "[SmtLibParser] Could not open file: " << fileName << "\n";
+    std::abort();
+  }
+
+  init(file);
+}
+
+ZSmtLibParser::ZSmtLibParser(std::istream &iss, Z3_context ctx) : m_zCtx(ctx) {
+  init(iss);
+}
+
+static void collectAllDecls(const ZAst &a, ZSmtLibParser::FunDeclSet &seen,
+                            ZSmtLibParser::AstSet &visited) {
+  if (Z3_get_ast_kind(a.ctx(), a) != Z3_APP_AST)
+    return;
+
+  if (visited.count(a) > 0)
+    return;
+  visited.insert(a);
+
+  Z3_app app = Z3_to_app(a.ctx(), a);
+  Z3_func_decl _fdecl = Z3_get_app_decl(a.ctx(), app);
+  ZFDecl fdecl{a.ctx(), _fdecl};
+
+  if (seen.count(fdecl) > 0)
+    return;
+
+  if (Z3_get_decl_kind(a.ctx(), fdecl) == Z3_OP_UNINTERPRETED) {
+    if (seen.count(fdecl) == 0) {
+      seen.insert(fdecl);
+    }
+  }
+
+  for (unsigned i = 0, e = Z3_get_app_num_args(a.ctx(), app); i != e; ++i)
+    collectAllDecls(ZAst(a.ctx(), Z3_get_app_arg(a.ctx(), app, i)), seen,
+                    visited);
+}
+
+void ZSmtLibParser::init(std::istream &iss) {
+  std::string content{std::istreambuf_iterator<char>(iss),
+                      std::istreambuf_iterator<char>()};
+
+  Z3_ast_vector asts = Z3_parse_smtlib2_string(
+      m_zCtx, content.c_str(), 0, nullptr, nullptr, 0, nullptr, nullptr);
+  if (!asts) {
+    llvm::errs() << "[SmtLibParser] Failed to parse\n";
+    std::abort();
+  }
+
+  m_asts = ZAstVec(m_zCtx, asts);
+  llvm::errs() << "Asts: " << m_asts << "\n";
+  const unsigned numAsts = m_asts.size();
+
+  m_decls = ZFDeclVec::mk(m_zCtx);
+
+  ZSmtLibParser::AstSet visited;
+
+  for (ZAst ast : m_asts) {
+    llvm::errs() << "Ast: " << ast << "\n";
+    collectAllDecls(ast, m_allDecls, visited);
+  }
+
+  for (const ZFDecl &decl : m_allDecls) {
+    llvm::errs() << "Decl: " << decl << "\n";
+    m_decls.push_back(decl);
+  }
+
+  llvm::errs() << "All decls: " << m_decls << "\n";
+}
 
 void Assignment::dump(llvm::raw_ostream &os) const {
   const size_t vars = numVariables();

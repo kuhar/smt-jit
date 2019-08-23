@@ -37,14 +37,15 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 
+#include "z3.h"
+
 #include "bvlib_cloner.hpp"
 
 #include "bvlib/bvlib.h"
 #include "sexpresso.hpp"
 #include "smtlib_parser.hpp"
 #include "smtlib_to_llvm.hpp"
-
-#include "z3.h"
+#include "support.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -171,7 +172,7 @@ void dummyFun() {}
 
 static bool doBVLibSanityCheck(SmtJit &jit);
 
-static int parseSmtAndEval(StringRef filename, SmtJit &jit,
+static int parseSmtAndEval(StringRef filename, Z3_context zCtx, SmtJit &jit,
                            const llvm::Module &bvLibTemplate);
 
 static bool models(smt_jit::SmtLibParser &parser, unsigned assignmentIdx,
@@ -230,12 +231,10 @@ int main(int argc, char **argv) {
 
   llvm::errs() << "Running in directory: " << exeDir << "\n";
 
-  Z3_context ctx;
+  Z3_context z3Ctx = mk_context();
+  auto _delCtx = smt_jit::OnScopeExit([&z3Ctx] { Z3_del_context(z3Ctx); });
+
   llvm::outs() << "\nZ3 simple_example\n";
-
-  ctx = mk_context();
-
-  Z3_del_context(ctx);
 
   auto errJit = SmtJit::Create();
   if (!errJit) {
@@ -275,7 +274,7 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    const int res = parseSmtAndEval(filename, *jit, *bvlibDeclsTemplate);
+    const int res = parseSmtAndEval(filename, z3Ctx, *jit, *bvlibDeclsTemplate);
     llvm::outs().flush();
 
     if (res != 0) {
@@ -287,12 +286,17 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-int parseSmtAndEval(StringRef filename, SmtJit &jit,
+int parseSmtAndEval(StringRef filename, Z3_context zCtx, SmtJit &jit,
                     const llvm::Module &bvLibTemplate) {
   llvm::outs() << "Evaluating: " << filename << "\n";
   const StringRef tempBasename = llvm::sys::path::filename(filename);
   const std::string tempDest = TempDir + "/" + tempBasename.str();
 
+  {
+    llvm::outs() << "Parsing " << filename << "\n";
+    smt_jit::ZSmtLibParser zparser(filename, zCtx);
+    llvm::outs() << "\nAfer parsing " << filename << "\n";
+  }
   smt_jit::SmtLibParser parser(filename);
 
   using namespace std::chrono;

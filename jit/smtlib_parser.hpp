@@ -1,15 +1,19 @@
 #pragma once
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "sexpresso.hpp"
 
+#include "z3_utils.hpp"
+
 #include <cassert>
 #include <iosfwd>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace smt_jit {
@@ -53,6 +57,39 @@ struct ArrayInfo {
   unsigned element_width;
   bool is_bitvector;
   std::string name;
+};
+
+class ZSmtLibParser {
+public:
+  using FunDeclSet = std::unordered_set<ZFDecl>;
+  using AstSet = std::unordered_set<ZAst>;
+
+private:
+  Z3_context m_zCtx = nullptr;
+  ZAstVec m_asts;
+  ZFDeclVec m_decls;
+
+  FunDeclSet m_allDecls;
+  FunDeclSet m_constantDecls;
+  FunDeclSet m_arrayDecls;
+
+  void init(std::istream &iss);
+
+public:
+  ZSmtLibParser(llvm::StringRef fileName, Z3_context ctx);
+  ZSmtLibParser(std::istream &iss, Z3_context);
+
+  llvm::ArrayRef<Assignment> assignments() const;
+  llvm::MutableArrayRef<Assignment> assignments();
+
+  llvm::ArrayRef<ArrayInfo> arrays() const;
+
+  llvm::MutableArrayRef<sexpresso::Sexp> assertions();
+  llvm::ArrayRef<sexpresso::Sexp> assertions() const;
+
+  size_t numAssignments() const;
+  size_t numArrays() const;
+  size_t numAssertions() const;
 };
 
 class SmtLibParser {
