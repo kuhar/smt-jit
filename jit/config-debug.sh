@@ -1,9 +1,9 @@
 #! /bin/sh
 
+set -e
 LLVM_DIR=$(readlink -f "$1")
 Z3_DIR=$(readlink -f "$2")
 
-set -e
 mkdir -p debug
 cd debug
 

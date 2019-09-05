@@ -10,7 +10,7 @@ find_package(LLVM 9.0 REQUIRED CONFIG EXACT PATHS ${LLVM_DIR})
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-        
+
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 include(AddLLVM)
 include(HandleLLVMOptions)
@@ -56,13 +56,13 @@ endif()
 add_subdirectory(bvlib)
 add_subdirectory(sexpresso)
 
-set(LLVM_LINK_COMPONENTS 
+set(LLVM_LINK_COMPONENTS
   CodeGen
   Core
   ExecutionEngine
   IRReader
   Interpreter
-  Instrumentation 
+  Instrumentation
   IPO
   MC
   Object

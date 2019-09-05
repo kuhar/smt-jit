@@ -1,8 +1,9 @@
 #! /bin/sh
 
-LLVM_DIR=$(readlink -f "$1")
-BUILD_DIR=$(readlink -f "$2")
 set -e
+LLVM_DIR=$(readlink -f "$1")
+BUILD_DIR="$2"
+
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
@@ -14,4 +15,5 @@ cmake "$LLVM_DIR"/llvm -GNinja -DCMAKE_BUILD_TYPE=Debug \
       -DLLVM_USE_SPLIT_DWARF=1 \
 			-DCMAKE_CXX_COMPILER=clang++-8 -DCMAKE_C_COMPILER=clang-8 \
 			-DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
-			-DCMAKE_INSTALL_PREFIX=./run
+			-DCMAKE_INSTALL_PREFIX=run
+
