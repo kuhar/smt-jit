@@ -1,4 +1,4 @@
-name: Docker Build
+name: smt-jit Docker Debug Build
 
 on: [push]
 
@@ -9,6 +9,7 @@ jobs:
     - uses: actions/checkout@v1
       with:
         submodules: true
+        ref: ${{ github.ref }}
     - name: Build the Docker image
       run: docker build . --file jit/docker/build-smt-jit.Dockerfile
            --build-arg CONFIG=debug --build-arg BUILD_TYPE=debug

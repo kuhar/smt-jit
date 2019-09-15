@@ -1,4 +1,4 @@
-name: Docker Build
+name: smt-jit Docker Release Build
 
 on: [push]
 
@@ -6,11 +6,18 @@ jobs:
   build:
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v1
+    - name: Init
+      uses: actions/checkout@v1
       with:
         submodules: true
-    - name: Build the Docker image
+        ref: ${{ github.ref }}
+      outputs:
+        start_date: ${{ $(date +%s) }}
+        image_tag: ${{ format('smt-jit-ci-release:{0}', start_date }} 
+    - name: Build
       run: docker build . --file jit/docker/build-smt-jit.Dockerfile
            --build-arg CONFIG=debug --build-arg BUILD_TYPE=release
-           --tag smt-jit-ci-release:$(date +%s)
+           --tag ${{ steps.Init.outputs.image_tag }}
+    - name: RunTests
+      run: docker run -it ${{ steps.Init.outputs.image_tag }} /bin/date
 
