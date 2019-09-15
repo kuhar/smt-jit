@@ -11,10 +11,8 @@ jobs:
       with:
         submodules: true
         ref: ${{ github.ref }}
-    - name: Build Docker
+    - name: Build Release with Docker
       run: docker build . --file jit/docker/build-smt-jit.Dockerfile
-           --build-arg CONFIG=debug --build-arg BUILD_TYPE=release
+           --build-arg CONFIG=release --build-arg BUILD_TYPE=release
            --tag build-smt-jit:release
-    - name: RunTests
-      run: docker run -it build-smt-jit:release /bin/date
 

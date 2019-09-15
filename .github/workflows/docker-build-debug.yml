@@ -6,12 +6,13 @@ jobs:
   build:
     runs-on: ubuntu-18.04
     steps:
-    - uses: actions/checkout@v1
+    - name: Checkout
+      uses: actions/checkout@v1
       with:
         submodules: true
         ref: ${{ github.ref }}
-    - name: Build the Docker image
+    - name: Build Debug with Docker
       run: docker build . --file jit/docker/build-smt-jit.Dockerfile
            --build-arg CONFIG=debug --build-arg BUILD_TYPE=debug
-           --tag smt-jit-ci-debug:$(date +%s)
+           --tag build-smt-jit:debug
 
