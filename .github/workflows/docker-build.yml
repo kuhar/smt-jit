@@ -1,0 +1,12 @@
+name: Docker Build
+
+on: [push]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+    - name: Build the Docker image
+      run: docker build . --file jit/docker/build-smt-jit.Dockerfile --build-arg CONFIG=debug --build-arg BUILD_TYPE=debug --tag smt-jit-ci:$(date +%s)
