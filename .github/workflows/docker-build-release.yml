@@ -1,0 +1,17 @@
+name: Docker Build
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v1
+      with:
+        submodules: true
+        ref: ${GITHUB_REF}
+    - name: Build the Docker image
+      run: docker build . --file jit/docker/build-smt-jit.Dockerfile
+           --build-arg CONFIG=debug --build-arg BUILD_TYPE=release
+           --tag smt-jit-ci-release:$(date +%s)
+

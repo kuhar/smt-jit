@@ -4,8 +4,7 @@ FROM kuhar/smt-jit-deps:$CONFIG
 
 ARG BUILD_TYPE=debug
 
-WORKDIR /smt-jit
-RUN git clone https://github.com/kuhar/smt-jit --recursive --depth=10 .
+COPY . /smt-jit
 WORKDIR /smt-jit/jit
 
 RUN echo "Building smt-jit in the $BUILD_TYPE configuration" && \
