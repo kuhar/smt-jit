@@ -2,7 +2,6 @@
 SMT-JIT
 =======
 ### A toy Just-In-Time Compiler for evaluating SMT formulas (QF_AUFBV)
-### [CS 842] Final Course Project
 ---
 
 This project implements a simple JIT compiler for the QF_AUFBV subset of SMT emitted by the KLEE symbolic execution engine, including unbounded arrays of bitvectors and fixed-width bitvectors. SMT-JIT uses the LLVM's ORCv2 API for jitting.
